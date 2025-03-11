@@ -428,11 +428,9 @@ def main():
     print(f"  - {conclusion}")
     print(f"  - Recomendação: {'Utilizar o AutoFE' if inference_diff >= 0 else 'Utilizar o modelo baseline (mais simples)'}")
     
+    print(f"\nMelhor configuração: {best_config}")
+    
     print(f"\nArquivos de análise salvos em: {OUTPUT_DIR}/")
     
-    # Restaurar o método original de remoção de outliers
-    from preprocessor import PreProcessor
-    PreProcessor._remove_outliers = original_remove_outliers_fn
-
 if __name__ == "__main__":
     main()

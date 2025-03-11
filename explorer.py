@@ -43,6 +43,87 @@ class HeuristicSearch:
         return best_node
     
     @staticmethod
+    def dimension_preserving_heuristic(df: pd.DataFrame, original_feature_count: int = None) -> float:
+        """
+        Heurística que prioriza manter o número original de features enquanto
+        maximiza a qualidade das features (baixa correlação, boa distribuição).
+        
+        Args:
+            df (pd.DataFrame): DataFrame transformado a ser avaliado
+            original_feature_count (int, opcional): Número original de features para referência.
+                Se não for fornecido, usa o número atual de features.
+            
+        Returns:
+            float: Pontuação da qualidade do DataFrame (maior é melhor)
+        """
+        # Se não for fornecido, assume o número atual como referência
+        if original_feature_count is None:
+            # Tenta identificar o número esperado de features no contexto atual
+            target_cols = ['target', 'classe', 'class', 'y']
+            possible_target_col = [col for col in df.columns if col.lower() in target_cols]
+            current_features = df.shape[1] - len(possible_target_col)
+            original_feature_count = current_features
+        
+        # Penalidade por desvio do número original de features
+        # Quanto maior a diferença, maior a penalidade
+        feature_count_deviation = abs(df.shape[1] - original_feature_count)
+        feature_penalty = feature_count_deviation / max(1, original_feature_count)
+        
+        # Penaliza alta correlação entre features
+        correlation_penalty = 0
+        if df.shape[1] > 1:
+            # Selecionar apenas colunas numéricas para correlação
+            numeric_df = df.select_dtypes(include=['number'])
+            if not numeric_df.empty and numeric_df.shape[1] > 1:
+                try:
+                    correlation_matrix = numeric_df.corr().abs()
+                    # Remove a diagonal (correlação de cada feature consigo mesma)
+                    high_corr = (correlation_matrix > 0.90).sum().sum() - numeric_df.shape[1]  
+                    correlation_penalty = high_corr / (numeric_df.shape[1] ** 2)  # Normaliza penalização
+                except Exception as e:
+                    # Em caso de erro no cálculo da correlação, define penalidade zero
+                    correlation_penalty = 0
+        
+        # Recompensa distribuição mais próxima da normal (menor skewness)
+        normality_score = 0
+        numeric_cols = df.select_dtypes(include=['number']).columns
+        if len(numeric_cols) > 0:
+            skew_values = []
+            for col in numeric_cols:
+                # Usando skewness como medida (0 = distribuição perfeitamente simétrica)
+                try:
+                    if df[col].nunique() > 1:  # Evita erro com colunas constantes
+                        skew = abs(df[col].skew())
+                        skew_values.append(skew)
+                except:
+                    continue
+            
+            if skew_values:
+                avg_skew = sum(skew_values) / len(skew_values)
+                normality_score = 1 / (1 + avg_skew)  # Normaliza entre 0 e 1
+        
+        # Avalia diversidade de variáveis categóricas (recompensa)
+        categorical_diversity_score = 0
+        categorical_features = df.select_dtypes(include=['object', 'category'])
+        if not categorical_features.empty:
+            unique_counts = categorical_features.nunique()
+            if unique_counts.max() > 0:
+                categorical_diversity_score = unique_counts.mean() / unique_counts.max()  # Normaliza entre 0 e 1
+        
+        # Penalidade forte para desvios grandes do número de features
+        dimensional_penalty = feature_penalty * 5  # Peso alto para enfatizar a preservação dimensional
+        
+        # Score final: balanceia os diferentes componentes
+        final_score = (
+            normality_score * 0.3 +           # 30% para normalidade
+            categorical_diversity_score * 0.2  # 20% para diversidade categórica
+            - correlation_penalty * 0.5       # 50% de penalidade por correlação alta
+            - dimensional_penalty             # Penalidade dimensão com peso 5x
+        )
+        
+        return final_score
+
+    @staticmethod
     def custom_heuristic(df: pd.DataFrame) -> float:
         """Heurística baseada na matriz de correlação e diversidade categórica."""
         correlation_penalty = 0
@@ -59,15 +140,169 @@ class HeuristicSearch:
         if not categorical_features.empty:
             unique_counts = categorical_features.nunique()
             categorical_diversity_score = unique_counts.mean() / max(1, unique_counts.max())  # Normaliza entre 0 e 1
+            
+        
         
         # Score final: penaliza alta correlação e recompensa diversidade categórica
         final_score = -correlation_penalty + categorical_diversity_score
+        return final_score
+    
+    @staticmethod
+    def combined_heuristic(df: pd.DataFrame, original_feature_count: int = None) -> float:
+        """
+        Heurística combinada que integra tanto a preservação da dimensionalidade original
+        quanto a análise de qualidade das features baseada na correlação e diversidade.
+        
+        Args:
+            df (pd.DataFrame): DataFrame transformado a ser avaliado
+            original_feature_count (int, opcional): Número original de features para referência.
+                Se não for fornecido, tenta detectar automaticamente.
+            
+        Returns:
+            float: Pontuação da qualidade do DataFrame (maior é melhor)
+        """
+        # Determinar o número original de features
+        if original_feature_count is None:
+            # Tenta identificar o número esperado de features no contexto atual
+            target_cols = ['target', 'classe', 'class', 'y', 'label']
+            possible_target_col = [col for col in df.columns if col.lower() in target_cols]
+            original_feature_count = df.shape[1] - len(possible_target_col)
+        
+        # ---- COMPONENTE 1: PRESERVAÇÃO DIMENSIONAL ----
+        # Penalidade por desvio do número original de features
+        feature_count_deviation = abs(df.shape[1] - original_feature_count)
+        feature_penalty = feature_count_deviation / max(1, original_feature_count)
+        
+        # ---- COMPONENTE 2: CORRELAÇÃO ENTRE FEATURES ----
+        correlation_penalty = 0
+        if df.shape[1] > 1:
+            numeric_df = df.select_dtypes(include=['number'])
+            if not numeric_df.empty and numeric_df.shape[1] > 1:
+                try:
+                    correlation_matrix = numeric_df.corr().abs()
+                    # Remove a diagonal principal
+                    high_corr = (correlation_matrix > 0.95).sum().sum() - numeric_df.shape[1]
+                    correlation_penalty = high_corr / (numeric_df.shape[1] ** 2)
+                except Exception as e:
+                    correlation_penalty = 0
+        
+        # ---- COMPONENTE 3: DIVERSIDADE CATEGÓRICA ----
+        categorical_diversity_score = 0
+        categorical_features = df.select_dtypes(include=['object', 'category'])
+        if not categorical_features.empty:
+            try:
+                unique_counts = categorical_features.nunique()
+                if unique_counts.max() > 0:
+                    categorical_diversity_score = unique_counts.mean() / unique_counts.max()
+            except Exception:
+                categorical_diversity_score = 0
+        
+        # ---- COMPONENTE 4: NORMALIDADE DAS DISTRIBUIÇÕES ----
+        normality_score = 0
+        numeric_cols = df.select_dtypes(include=['number']).columns
+        if len(numeric_cols) > 0:
+            skew_values = []
+            for col in numeric_cols:
+                try:
+                    if df[col].nunique() > 1:
+                        skew = abs(df[col].skew())
+                        skew_values.append(skew)
+                except:
+                    continue
+            
+            if skew_values:
+                avg_skew = sum(skew_values) / len(skew_values)
+                normality_score = 1 / (1 + avg_skew)
+        
+        # ---- PONDERAÇÃO FINAL ----
+        # Definir pesos para cada componente
+        dimension_weight = 4.0       # Peso alto para preservação dimensional
+        correlation_weight = 1.0     # Peso médio para penalidade por correlação
+        categorical_weight = 0.5     # Peso baixo para diversidade categórica
+        normality_weight = 0.5       # Peso baixo para normalidade
+        
+        # Calcular pontuação final
+        final_score = (
+            -dimension_weight * feature_penalty +              # Penalidade pela diferença dimensional
+            -correlation_weight * correlation_penalty +        # Penalidade por alta correlação
+            categorical_weight * categorical_diversity_score + # Recompensa por diversidade categórica
+            normality_weight * normality_score                 # Recompensa por normalidade
+        )
+        
+        return final_score
+    
+    @staticmethod
+    def strict_dimension_heuristic(df: pd.DataFrame, original_feature_count: int = None, max_expansion_factor: float = 1.1) -> float:
+        """
+        Heurística que impõe um limite estrito no número de features,
+        rejeitando completamente transformações que ultrapassem um limite máximo.
+        
+        Args:
+            df (pd.DataFrame): DataFrame transformado a ser avaliado
+            original_feature_count (int): Número original de features no dataset
+            max_expansion_factor (float): Fator máximo de expansão permitido (ex: 1.5 = 50% mais features)
+            
+        Returns:
+            float: Pontuação da heurística (maior é melhor, -inf para transformações rejeitadas)
+        """
+        # Determinar o número original de features se não fornecido
+        if original_feature_count is None:
+            # Assumimos que é o wine dataset com 13 features originais
+            original_feature_count = 13
+        
+        # Número máximo de features permitido
+        max_features = int(original_feature_count * max_expansion_factor)
+        
+        # Verificar se o DataFrame excede o limite máximo de features
+        # Desconsiderando possíveis colunas target
+        target_cols = ['target', 'classe', 'class', 'y', 'label']
+        df_cols = [col for col in df.columns if col.lower() not in target_cols]
+        
+        if len(df_cols) > max_features:
+            # Rejeitar completamente, retornando uma pontuação extremamente baixa
+            return float('-inf')
+        
+        # Para transformações dentro do limite, calcular pontuação normal
+        
+        # ---- Componente 1: Proximidade ao número original (quanto mais próximo, melhor) ----
+        dimension_score = 1.0 - (abs(len(df_cols) - original_feature_count) / original_feature_count)
+        
+        # ---- Componente 2: Penalidade por correlação alta ----
+        correlation_penalty = 0
+        numeric_df = df.select_dtypes(include=['number'])
+        if not numeric_df.empty and numeric_df.shape[1] > 1:
+            try:
+                correlation_matrix = numeric_df.corr().abs()
+                # Remove a diagonal
+                np.fill_diagonal(correlation_matrix.values, 0)
+                high_corr = (correlation_matrix > 0.8).sum().sum() / 2  # Divide por 2 pois a matriz é simétrica
+                correlation_penalty = high_corr / (numeric_df.shape[1] * (numeric_df.shape[1] - 1) / 2)
+            except Exception:
+                pass
+        
+        # ---- Componente 3: Variância explicada ----
+        # Premia features com maior variância (mais informativas)
+        variance_score = 0
+        if not numeric_df.empty:
+            try:
+                normalized_variances = numeric_df.var() / numeric_df.var().max()
+                variance_score = normalized_variances.mean()
+            except Exception:
+                pass
+        
+        # Calcular pontuação final com pesos
+        final_score = (
+            dimension_score * 5.0 +       # Peso muito alto para proximidade dimensional
+            variance_score * 2.0 -        # Peso médio para variância explicada
+            correlation_penalty * 3.0     # Peso alto para penalidade por correlação
+        )
+        
         return final_score
 
 class Explorer:
     def __init__(self, heuristic: Callable[[pd.DataFrame], float] = None, target_col: Optional[str] = None):
         self.tree = TransformationTree()
-        self.search = HeuristicSearch(heuristic or HeuristicSearch.custom_heuristic)
+        self.search = HeuristicSearch(heuristic or HeuristicSearch.strict_dimension_heuristic)
         self.target_col = target_col
     
     def add_transformation(self, parent: str, name: str, data, score: float = 0.0):
@@ -92,25 +327,40 @@ class Explorer:
             {"missing_values_strategy": "mean"},
             {"missing_values_strategy": "median"},
             {"missing_values_strategy": "most_frequent"},
+            {"missing_values_strategy": "weighted_mean"},
+            {"missing_values_strategy": "interpolation"},
             {"outlier_method": "iqr"},
             {"outlier_method": "zscore"},
             {"outlier_method": "isolation_forest"},
+            {"outlier_method": "iqr_zscore"},  # Combinação de métodos
+            {"outlier_method": "iqr_isolation_forest"},
             {"categorical_strategy": "onehot"},
             {"categorical_strategy": "ordinal"},
+            {"categorical_strategy": "target_encoding"},
+            {"categorical_strategy": "binary"},
             {"scaling": "standard"},
             {"scaling": "minmax"},
-            {"scaling": "robust"}
+            {"scaling": "robust"},
+            {"scaling": "normalization"},
+            {"scaling": "power_transform"},
         ]
-        
+
         feature_configs = [
             {"dimensionality_reduction": "pca"},
+            {"dimensionality_reduction": "ica"},
+            {"dimensionality_reduction": "umap"},
             {"dimensionality_reduction": None},
             {"feature_selection": "variance"},
+            {"feature_selection": "mutual_info"},
+            {"feature_selection": "lasso"},
             {"feature_selection": None},
             {"generate_features": True},
             {"generate_features": False},
-            {"correlation_threshold": 0.95}
+            {"correlation_threshold": 0.95},
+            {"correlation_threshold": 0.90},
+            {"correlation_threshold": 0.85},
         ]
+
         
         # Testar cada combinação de preprocessador
         for preproc_config in preprocessor_configs:
