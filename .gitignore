@@ -1,0 +1,15 @@
+venv
+**__pycache__**
+**teste**
+**data.
+**.vscode**
+**.idea**
+**.pytest_cache**
+**.mypy_cache**
+**.csv
+**.log
+**.json
+**logs**
+**.zip
+**output**
+**.joblib
