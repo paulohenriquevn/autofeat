@@ -21,7 +21,7 @@ sys.path.append(project_root)
 
 # Importar módulos do AutoFE
 from auto_explorer import AutoExplorer
-from preprocessing import PreProcessor
+from feature_engineer import FeatureEngineer
 
 # Configurar logging
 logging.basicConfig(
@@ -50,7 +50,7 @@ def main():
             'outlier_method': 'clip',
             'normalization': True
         }
-        preprocessor = PreProcessor(preprocessor_config)
+        preprocessor = FeatureEngineer(preprocessor_config)
         
         X_cleaned = preprocessor.fit_transform(X)
         

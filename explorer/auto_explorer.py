@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
-from sklearn.feature_selection import SelectKBest, f_regression, mutual_info_regression
-from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
+from sklearn.feature_selection import SelectKBest, mutual_info_regression
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import cross_val_score
 

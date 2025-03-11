@@ -14,7 +14,7 @@ from scipy import stats
 import joblib
 import os
 
-class PreProcessor:
+class FeatureEngineer:
     def __init__(self, config: Optional[Dict] = None):
         self.config = {
             'missing_values_strategy': 'median',
@@ -31,17 +31,17 @@ class PreProcessor:
         if config:
             self.config.update(config)
         
-        self.preprocessor = None
+        self.FeatureEngineer = None
         self.column_types = {}
         self.fitted = False
         self.feature_names = []
         self.target_col = None
         
         self._setup_logging()
-        self.logger.info("PreProcessor inicializado com sucesso.")
+        self.logger.info("FeatureEngineer inicializado com sucesso.")
 
     def _setup_logging(self):
-        self.logger = logging.getLogger("AutoFE.PreProcessor")
+        self.logger = logging.getLogger("AutoFE.FeatureEngineer")
         if not self.logger.handlers:
             handler = logging.StreamHandler()
             formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -123,8 +123,7 @@ class PreProcessor:
             feature_names = poly.get_feature_names_out(num_data.columns)
             
             # Remove colunas originais dos nomes das features transformadas
-            poly_feature_names = [name for name in feature_names 
-                                 if ' ' in name]  # Features interativas contêm espaço
+            poly_feature_names = [name for name in feature_names if ' ' in name]  # Features interativas contêm espaço
             
             # Cria DataFrame apenas com as novas features
             df_poly = pd.DataFrame(
@@ -139,7 +138,7 @@ class PreProcessor:
             self.logger.error(f"Erro ao gerar features polinomiais: {e}")
             return df
     
-    def fit(self, df: pd.DataFrame, target_col: Optional[str] = None) -> 'PreProcessor':
+    def fit(self, df: pd.DataFrame, target_col: Optional[str] = None) -> 'FeatureEngineer':
         if df.empty:
             raise ValueError("Não é possível ajustar com um DataFrame vazio")
             
@@ -165,13 +164,13 @@ class PreProcessor:
 
         # Configurar pipeline de transformação
         transformers = self._build_transformers()
-        self.preprocessor = ColumnTransformer(transformers, remainder='passthrough')
+        self.FeatureEngineer = ColumnTransformer(transformers, remainder='passthrough')
 
         # Configurar redução de dimensionalidade, se aplicável
         self._setup_dimensionality_reduction(df_proc)
         
         try:
-            self.preprocessor.fit(df_proc)
+            self.FeatureEngineer.fit(df_proc)
             self.feature_names = df_proc.columns.tolist()
             self.fitted = True
             self.logger.info(f"Preprocessador ajustado com sucesso com {len(self.feature_names)} features")
@@ -225,7 +224,7 @@ class PreProcessor:
 
     def _setup_dimensionality_reduction(self, df: pd.DataFrame) -> None:
         """Configura redução de dimensionalidade e seleção de features"""
-        pipeline_steps = [('preprocessor', self.preprocessor)]
+        pipeline_steps = [('FeatureEngineer', self.FeatureEngineer)]
         
         # Adicionar PCA se configurado
         if self.config['dimensionality_reduction'] == 'pca':
@@ -242,7 +241,7 @@ class PreProcessor:
             
         # Construir pipeline final
         if len(pipeline_steps) > 1:
-            self.preprocessor = Pipeline(pipeline_steps)
+            self.FeatureEngineer = Pipeline(pipeline_steps)
 
     def transform(self, df: pd.DataFrame, target_col: Optional[str] = None) -> pd.DataFrame:
         if not self.fitted:
@@ -266,11 +265,11 @@ class PreProcessor:
         
         # Aplicar transformação
         try:
-            df_transformed = self.preprocessor.transform(df_proc)
+            df_transformed = self.FeatureEngineer.transform(df_proc)
             
             # Determinar nomes das colunas
-            if hasattr(self.preprocessor, 'get_feature_names_out'):
-                feature_names = self.preprocessor.get_feature_names_out()
+            if hasattr(self.FeatureEngineer, 'get_feature_names_out'):
+                feature_names = self.FeatureEngineer.get_feature_names_out()
             else:
                 feature_names = [f"feature_{i}" for i in range(df_transformed.shape[1])]
 
@@ -313,10 +312,10 @@ class PreProcessor:
         self.logger.info(f"Preprocessador salvo em {filepath}")
     
     @classmethod
-    def load(cls, filepath: str) -> 'PreProcessor':
-        preprocessor = joblib.load(filepath)
-        preprocessor.logger.info(f"Preprocessador carregado de {filepath}")
-        return preprocessor
+    def load(cls, filepath: str) -> 'FeatureEngineer':
+        FeatureEngineer = joblib.load(filepath)
+        FeatureEngineer.logger.info(f"Preprocessador carregado de {filepath}")
+        return FeatureEngineer
     
     
 
@@ -392,7 +391,7 @@ class Explorer:
         return self.search.search(self.tree)
     
     def analyze_transformations(self, df):
-        """Testa diferentes transformações e escolhe a melhor para o PreProcessor."""
+        """Testa diferentes transformações e escolhe a melhor para o FeatureEngineer."""
         logger.info("Iniciando análise de transformações.")
         if isinstance(df, np.ndarray):
             df = pd.DataFrame(df, columns=[f"feature_{i}" for i in range(df.shape[1])])
@@ -424,7 +423,7 @@ class Explorer:
                 logger.warning(f"O DataFrame está vazio após remoção de outliers. Pulando transformação: {name}")
                 continue
             
-            transformed_data = PreProcessor(config).fit(df, target_col=self.target_col if self.target_col else None).transform(df, target_col=self.target_col if self.target_col else None)
+            transformed_data = FeatureEngineer(config).fit(df, target_col=self.target_col if self.target_col else None).transform(df, target_col=self.target_col if self.target_col else None)
             
             if transformed_data.empty:
                 logger.warning(f"A transformação {name} resultou em um DataFrame vazio. Pulando.")
@@ -438,5 +437,5 @@ class Explorer:
         return self.tree.graph.nodes[best_transformation]['data'] if best_transformation else df
 
 
-def create_preprocessor(config: Optional[Dict] = None) -> PreProcessor:
-    return PreProcessor(config)
+def createFeatureEngineer(config: Optional[Dict] = None) -> FeatureEngineer:
+    return FeatureEngineer(config)
