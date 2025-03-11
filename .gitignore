@@ -14,6 +14,8 @@ venv
 **.zip
 **output**
 **.joblib
+**.pkl
+**.png
 
 # Ambientes virtuais
 venv/

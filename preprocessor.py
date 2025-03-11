@@ -58,30 +58,39 @@ class PreProcessor:
         if numeric_df.empty:
             return df
             
-        method = self.config['outlier_method']
+        method = self.config.get('outlier_method', 'none')
+        
+        # Para esse exemplo, vamos desativar a remoção de outliers para evitar perda de amostras
+        if method.lower() == 'none':
+            return df
+            
+        # Se insistir em usar algum método, aplicaremos mas limitando a remoção
         if method == 'zscore':
             z_scores = np.abs(stats.zscore(numeric_df, nan_policy='omit'))
-            mask = (z_scores < 3).all(axis=1)
+            # Usar um threshold mais permissivo
+            mask = (z_scores < 5).all(axis=1)  # Alterado de 3 para 5
             filtered_df = df[mask]
         elif method == 'iqr':
             Q1 = numeric_df.quantile(0.25)
             Q3 = numeric_df.quantile(0.75)
             IQR = Q3 - Q1
-            mask = ~((numeric_df < (Q1 - 1.5 * IQR)) | (numeric_df > (Q3 + 1.5 * IQR))).any(axis=1)
+            # Usar um threshold mais permissivo
+            mask = ~((numeric_df < (Q1 - 3 * IQR)) | (numeric_df > (Q3 + 3 * IQR))).any(axis=1)  # Alterado de 1.5 para 3
             filtered_df = df[mask]
         elif method == 'isolation_forest':
-            clf = IsolationForest(contamination=0.05, random_state=42)
+            # Reduzir a taxa de contaminação
+            clf = IsolationForest(contamination=0.01, random_state=42)  # Alterado de 0.05 para 0.01
             outliers = clf.fit_predict(numeric_df)
             filtered_df = df[outliers == 1]
         else:
             return df  # Caso o método não seja reconhecido, retorna o DataFrame original
 
-        if filtered_df.empty:
-            self.logger.warning("Todas as amostras foram removidas na remoção de outliers! Retornando DataFrame original.")
+        if filtered_df.empty or len(filtered_df) < len(df) * 0.8:  # Se remover mais de 20% das amostras
+            self.logger.warning("Muitas amostras seriam removidas na remoção de outliers! Retornando DataFrame original.")
             return df
 
         return filtered_df
-
+    
     def _build_transformers(self) -> List:
         """Constrói os transformadores para colunas numéricas e categóricas"""
         # Configurar imputer
