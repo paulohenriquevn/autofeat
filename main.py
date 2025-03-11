@@ -199,7 +199,7 @@ def main():
     ]
     
     # Para teste, usar apenas iris
-    available_datasets = ["iris"]
+    # available_datasets = ["iris"]
     
     print("Datasets disponíveis para teste:")
     for i, dataset_name in enumerate(available_datasets, 1):
