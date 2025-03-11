@@ -1,4 +1,3 @@
-### preprocessor.py ###
 import pandas as pd
 import numpy as np
 import logging
@@ -13,12 +12,106 @@ from scipy import stats
 import joblib
 import os
 
+class DateTimeTransformer:
+    """
+    Transforma colunas de data/hora em características numéricas úteis para modelos.
+    """
+    def __init__(self, drop_original=True, extract_features=None):
+        """
+        Inicializa o transformador de data/hora.
+        
+        Args:
+            drop_original: Se True, remove a coluna original após extrair os recursos
+            extract_features: Lista de features de data/hora para extrair. Se None, 
+                              extrai todas as features disponíveis.
+        """
+        self.drop_original = drop_original
+        self.datetime_columns = []
+        
+        # Features de data/hora que podem ser extraídas
+        self.available_features = [
+            'year', 'month', 'day', 'weekday', 'quarter', 'is_weekend',
+            'hour', 'minute', 'second', 'is_month_start', 'is_month_end',
+            'is_year_start', 'is_year_end', 'days_in_month'
+        ]
+        
+        # Se extract_features não for especificado, usar as principais features
+        self.extract_features = extract_features or [
+            'year', 'month', 'day', 'weekday', 'quarter', 'is_weekend'
+        ]
+        
+        # Validar as features solicitadas
+        invalid_features = [f for f in self.extract_features if f not in self.available_features]
+        if invalid_features:
+            raise ValueError(f"Features inválidas: {invalid_features}. "
+                            f"Features disponíveis: {self.available_features}")
+
+    def fit(self, X, y=None):
+        """Identifica colunas de data/hora no DataFrame."""
+        self.datetime_columns = X.select_dtypes(include=['datetime64']).columns.tolist()
+        return self
+
+    def transform(self, X):
+        """
+        Transforma colunas de data/hora em features numéricas.
+        
+        Args:
+            X: DataFrame com colunas de data/hora
+            
+        Returns:
+            DataFrame com as colunas de data/hora transformadas em features numéricas
+        """
+        X_transformed = X.copy()
+        
+        for col in self.datetime_columns:
+            # Extrair recursos de data/hora
+            for feature in self.extract_features:
+                if feature == 'year':
+                    X_transformed[f'{col}_year'] = X_transformed[col].dt.year
+                elif feature == 'month':
+                    X_transformed[f'{col}_month'] = X_transformed[col].dt.month
+                elif feature == 'day':
+                    X_transformed[f'{col}_day'] = X_transformed[col].dt.day
+                elif feature == 'weekday':
+                    X_transformed[f'{col}_weekday'] = X_transformed[col].dt.weekday
+                elif feature == 'quarter':
+                    X_transformed[f'{col}_quarter'] = X_transformed[col].dt.quarter
+                elif feature == 'is_weekend':
+                    X_transformed[f'{col}_is_weekend'] = (X_transformed[col].dt.weekday >= 5).astype(int)
+                elif feature == 'hour':
+                    X_transformed[f'{col}_hour'] = X_transformed[col].dt.hour
+                elif feature == 'minute':
+                    X_transformed[f'{col}_minute'] = X_transformed[col].dt.minute
+                elif feature == 'second':
+                    X_transformed[f'{col}_second'] = X_transformed[col].dt.second
+                elif feature == 'is_month_start':
+                    X_transformed[f'{col}_is_month_start'] = X_transformed[col].dt.is_month_start.astype(int)
+                elif feature == 'is_month_end':
+                    X_transformed[f'{col}_is_month_end'] = X_transformed[col].dt.is_month_end.astype(int)
+                elif feature == 'is_year_start':
+                    X_transformed[f'{col}_is_year_start'] = X_transformed[col].dt.is_year_start.astype(int)
+                elif feature == 'is_year_end':
+                    X_transformed[f'{col}_is_year_end'] = X_transformed[col].dt.is_year_end.astype(int)
+                elif feature == 'days_in_month':
+                    X_transformed[f'{col}_days_in_month'] = X_transformed[col].dt.days_in_month
+            
+            # Remover coluna original se configurado para isso
+            if self.drop_original:
+                X_transformed = X_transformed.drop(columns=[col])
+        
+        return X_transformed
+
+    def fit_transform(self, X, y=None):
+        """Ajusta e transforma em uma única operação."""
+        return self.fit(X, y).transform(X)
+
 class PreProcessor:
     def __init__(self, config: Optional[Dict] = None):
         self.config = {
             'missing_values_strategy': 'median',
             'outlier_method': 'iqr',  # Opções: 'zscore', 'iqr', 'isolation_forest'
             'categorical_strategy': 'onehot',
+            'datetime_features': ['year', 'month', 'day', 'weekday', 'is_weekend'],
             'scaling': 'standard',
             'verbosity': 1,
         }
@@ -26,6 +119,7 @@ class PreProcessor:
             self.config.update(config)
         
         self.preprocessor = None
+        self.datetime_transformer = None
         self.column_types = {}
         self.fitted = False
         self.feature_names = []
@@ -44,11 +138,22 @@ class PreProcessor:
         self.logger.setLevel({0: logging.WARNING, 1: logging.INFO, 2: logging.DEBUG}.get(self.config['verbosity'], logging.INFO))
 
     def _identify_column_types(self, df: pd.DataFrame) -> Dict:
+        """Identifica o tipo de cada coluna do DataFrame."""
         numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
         categorical_cols = df.select_dtypes(include=['object', 'category']).columns.tolist()
-        return {'numeric': numeric_cols, 'categorical': categorical_cols}
+        datetime_cols = df.select_dtypes(include=['datetime64']).columns.tolist()
+        
+        self.logger.info(f"Colunas identificadas: {len(numeric_cols)} numéricas, "
+                         f"{len(categorical_cols)} categóricas, {len(datetime_cols)} de data/hora")
+        
+        return {
+            'numeric': numeric_cols, 
+            'categorical': categorical_cols,
+            'datetime': datetime_cols
+        }
     
     def _remove_outliers(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Remove outliers do DataFrame usando o método especificado."""
         if df.empty:
             self.logger.warning("DataFrame vazio antes da remoção de outliers. Pulando esta etapa.")
             return df
@@ -90,6 +195,35 @@ class PreProcessor:
             return df
 
         return filtered_df
+    
+    def _process_datetime_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Processa colunas de data/hora, extraindo características numéricas úteis.
+        
+        Args:
+            df: DataFrame com colunas de data/hora
+            
+        Returns:
+            DataFrame com colunas de data/hora transformadas em características numéricas
+        """
+        if not self.column_types.get('datetime'):
+            return df
+            
+        datetime_cols = self.column_types['datetime']
+        if not datetime_cols:
+            return df
+            
+        self.logger.info(f"Processando {len(datetime_cols)} colunas de data/hora: {datetime_cols}")
+        
+        # Inicializar o transformador se não existir
+        if self.datetime_transformer is None:
+            self.datetime_transformer = DateTimeTransformer(
+                extract_features=self.config.get('datetime_features')
+            )
+            self.datetime_transformer.fit(df)
+        
+        # Aplicar a transformação
+        return self.datetime_transformer.transform(df)
     
     def _build_transformers(self) -> List:
         """Constrói os transformadores para colunas numéricas e categóricas"""
@@ -135,6 +269,16 @@ class PreProcessor:
         return transformers
 
     def fit(self, df: pd.DataFrame, target_col: Optional[str] = None) -> 'PreProcessor':
+        """
+        Ajusta o preprocessador aos dados, aprendendo os parâmetros necessários para as transformações.
+        
+        Args:
+            df: DataFrame com os dados de treinamento
+            target_col: Nome da coluna alvo (opcional)
+            
+        Returns:
+            A própria instância do PreProcessor, permitindo encadear métodos
+        """
         if df.empty:
             raise ValueError("Não é possível ajustar com um DataFrame vazio")
             
@@ -153,8 +297,15 @@ class PreProcessor:
             self.logger.error("Erro: O DataFrame está vazio após pré-processamento. Ajuste as configurações.")
             raise ValueError("O DataFrame está vazio após as transformações.")
 
+        # Identificar tipos de colunas
         self.column_types = self._identify_column_types(df_proc)
-        self.logger.info(f"Colunas identificadas: {len(self.column_types['numeric'])} numéricas, {len(self.column_types['categorical'])} categóricas")
+        
+        # Processar colunas de data/hora
+        if self.column_types.get('datetime'):
+            df_proc = self._process_datetime_columns(df_proc)
+            
+            # Atualizar tipos de colunas após o processamento de datas
+            self.column_types = self._identify_column_types(df_proc)
 
         # Configurar pipeline de transformação
         transformers = self._build_transformers()
@@ -171,6 +322,16 @@ class PreProcessor:
             raise
 
     def transform(self, df: pd.DataFrame, target_col: Optional[str] = None) -> pd.DataFrame:
+        """
+        Aplica as transformações aprendidas a um conjunto de dados.
+        
+        Args:
+            df: DataFrame a ser transformado
+            target_col: Nome da coluna alvo (opcional)
+            
+        Returns:
+            DataFrame transformado
+        """
         if not self.fitted:
             raise ValueError("O preprocessador precisa ser ajustado antes de transformar dados. Use .fit() primeiro.")
 
@@ -184,6 +345,10 @@ class PreProcessor:
         
         # Aplicar remoção de outliers
         df_proc = self._remove_outliers(df_proc)
+
+        # Processar colunas de data/hora
+        if self.column_types.get('datetime'):
+            df_proc = self._process_datetime_columns(df_proc)
 
         # Verificar e ajustar colunas para compatibilidade com o modelo de preprocessamento
         self._check_columns_compatibility(df_proc)
@@ -228,8 +393,27 @@ class PreProcessor:
         extra_cols = set(df.columns) - set(self.feature_names)
         if extra_cols:
             self.logger.warning(f"Colunas extras ignoradas: {extra_cols}")
+    
+    def fit_transform(self, df: pd.DataFrame, target_col: Optional[str] = None) -> pd.DataFrame:
+        """
+        Ajusta o preprocessador e transforma os dados em uma única operação.
+        
+        Args:
+            df: DataFrame com os dados
+            target_col: Nome da coluna alvo (opcional)
+            
+        Returns:
+            DataFrame transformado
+        """
+        return self.fit(df, target_col).transform(df, target_col)
             
     def save(self, filepath: str) -> None:
+        """
+        Salva o preprocessador em um arquivo para uso futuro.
+        
+        Args:
+            filepath: Caminho do arquivo onde o preprocessador será salvo
+        """
         if not self.fitted:
             raise ValueError("Não é possível salvar um preprocessador não ajustado.")
         os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
@@ -238,10 +422,28 @@ class PreProcessor:
     
     @classmethod
     def load(cls, filepath: str) -> 'PreProcessor':
+        """
+        Carrega um preprocessador previamente salvo.
+        
+        Args:
+            filepath: Caminho do arquivo onde o preprocessador foi salvo
+            
+        Returns:
+            Instância de PreProcessor carregada
+        """
         preprocessor = joblib.load(filepath)
         preprocessor.logger.info(f"Preprocessador carregado de {filepath}")
         return preprocessor
 
 
 def create_preprocessor(config: Optional[Dict] = None) -> PreProcessor:
+    """
+    Função auxiliar para criar uma instância de PreProcessor com configurações opcionais.
+    
+    Args:
+        config: Dicionário com configurações personalizadas
+        
+    Returns:
+        Instância configurada do PreProcessor
+    """
     return PreProcessor(config)
