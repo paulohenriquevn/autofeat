@@ -16,6 +16,8 @@ venv
 **.joblib
 **.pkl
 **.png
+**.txt
+complex_test_results/
 
 # Ambientes virtuais
 venv/
