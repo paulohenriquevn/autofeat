@@ -1,5 +1,6 @@
 venv
 **__pycache__**
+**cache**
 **teste**
 **data.
 **.vscode**
@@ -13,3 +14,44 @@ venv
 **.zip
 **output**
 **.joblib
+
+# Ambientes virtuais
+venv/
+env/
+.env/
+.venv/
+
+# Arquivos de cache Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+
+# Diretórios de distribuição
+dist/
+build/
+*.egg-info/
+
+# IDEs e editores
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Arquivos de dados
+*.csv
+*.json
+*.xlsx
+*.xls
+*.parquet
+*.feather
+*.pkl
+*.joblib
+*.zip
+
+# Logs e outputs
+logs/
+*.log
+output/
