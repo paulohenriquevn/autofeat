@@ -111,6 +111,58 @@ O componente `PerformanceValidator` é responsável por avaliar e comparar a per
 - `get_best_dataset(X_original, y, X_transformed)`: Retorna o melhor dataset com base na avaliação
 - `get_feature_importance(X, y)`: Calcula a importância das features
 
+#### Transformação de Datasets pelo CAFE
+
+graph TD
+    subgraph "Dados de Entrada"
+        raw[("Dados Brutos")]
+        raw --> |"Colunas Numéricas"| num["Dados Numéricos"]
+        raw --> |"Colunas Categóricas"| cat["Dados Categóricos"]
+        raw --> |"Colunas de Data/Hora"| dt["Dados Temporais"]
+        raw --> |"Valores Ausentes"| na["Dados Faltantes"]
+        raw --> |"Outliers"| out["Dados Atípicos"]
+    end
+    
+    subgraph "PreProcessor"
+        num --> num_proc["Normalização/Padronização"]
+        cat --> cat_proc["Codificação (One-Hot/Ordinal)"]
+        dt --> dt_proc["Extração de Features Temporais"]
+        na --> na_proc["Estratégia de Imputação"]
+        out --> out_proc["Detecção e Tratamento"]
+        
+        num_proc & cat_proc & dt_proc & na_proc & out_proc --> merged["Dados Pré-processados"]
+    end
+    
+    subgraph "FeatureEngineer"
+        merged --> fe1["Geração de Features"]
+        fe1 --> fe2["Remoção de Alta Correlação"]
+        fe2 --> fe3["Seleção de Features"]
+        fe3 --> fe4["Redução de Dimensionalidade"]
+        
+        fe4 --> processed["Dados Transformados"]
+    end
+    
+    subgraph "PerformanceValidator"
+        raw --> cv1["Validação Cruzada\nDados Originais"]
+        processed --> cv2["Validação Cruzada\nDados Transformados"]
+        
+        cv1 & cv2 --> compare["Comparação de Performance"]
+        compare --> decision{"Performance\nMelhorou?"}
+        
+        decision -->|"Sim"| use_processed["Usar Dados Transformados"]
+        decision -->|"Não"| use_raw["Usar Dados Originais"]
+    end
+    
+    use_processed & use_raw --> final["Dados Finais\npara Modelo ML"]
+    
+    classDef process fill:#f9f,stroke:#333,stroke-width:1px;
+    classDef data fill:#bbf,stroke:#333,stroke-width:1px;
+    classDef decision fill:#fffacd,stroke:#333,stroke-width:1px;
+    
+    class num_proc,cat_proc,dt_proc,na_proc,out_proc,fe1,fe2,fe3,fe4,cv1,cv2,compare process;
+    class raw,num,cat,dt,na,out,merged,processed,final data;
+    class decision decision;
+
 #### Configurações disponíveis:
 
 | Parâmetro | Tipo | Descrição | Valores possíveis |
