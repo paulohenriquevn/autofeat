@@ -2,15 +2,110 @@ import pandas as pd
 import numpy as np
 import logging
 import networkx as nx
-from typing import List, Dict, Callable, Optional
+from typing import List, Dict, Callable, Optional, Union, Any
 from sklearn.impute import SimpleImputer, KNNImputer
-from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler, OneHotEncoder, OrdinalEncoder
+from sklearn.preprocessing import (
+    StandardScaler, MinMaxScaler, RobustScaler, OneHotEncoder, OrdinalEncoder,
+    Binarizer, KernelCenterer, MaxAbsScaler, Normalizer, PowerTransformer,
+    QuantileTransformer, FunctionTransformer, LabelBinarizer, LabelEncoder,
+    MultiLabelBinarizer, KBinsDiscretizer
+)
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import IsolationForest
 from scipy import stats
 import joblib
 import os
+
+
+# Implementação da classe TargetEncoder, já que ela não faz parte do scikit-learn padrão
+class TargetEncoder:
+    """
+    Target Encoder que substitui uma variável categórica pela média do target para cada categoria.
+    Útil para variáveis categóricas de alta cardinalidade.
+    """
+    def __init__(self, smoothing: float = 1.0, min_samples_leaf: int = 1, noise_level: float = 0.0):
+        """
+        Inicializa o Target Encoder.
+        
+        Args:
+            smoothing: Fator de suavização (regularização)
+            min_samples_leaf: Número mínimo de amostras por categoria
+            noise_level: Nível de ruído para adicionar (reduz overfitting)
+        """
+        self.smoothing = smoothing
+        self.min_samples_leaf = min_samples_leaf
+        self.noise_level = noise_level
+        self.mapping = {}
+        self.prior = None
+        
+    def fit(self, X: Union[pd.Series, np.ndarray], y: Union[pd.Series, np.ndarray]) -> 'TargetEncoder':
+        """
+        Ajusta o encoder aos dados.
+        
+        Args:
+            X: Features categóricas
+            y: Target
+            
+        Returns:
+            O próprio objeto TargetEncoder (para encadeamento)
+        """
+        # Converter para Series se necessário
+        if isinstance(X, np.ndarray):
+            X = pd.Series(X)
+        if isinstance(y, np.ndarray):
+            y = pd.Series(y)
+            
+        # Calcular a média global (prior)
+        self.prior = y.mean()
+        
+        # Calcular a média do target por categoria
+        stats = pd.DataFrame({'X': X, 'y': y}).groupby('X')['y']
+        count = stats.count()
+        mean = stats.mean()
+        
+        # Aplicar suavização bayesiana
+        smoove = 1 / (1 + np.exp(-(count - self.min_samples_leaf) / self.smoothing))
+        self.mapping = dict(mean * smoove + self.prior * (1 - smoove))
+        
+        return self
+        
+    def transform(self, X: Union[pd.Series, np.ndarray]) -> np.ndarray:
+        """
+        Transforma os dados categóricos em valores numéricos.
+        
+        Args:
+            X: Features categóricas
+            
+        Returns:
+            Array com valores codificados
+        """
+        if isinstance(X, np.ndarray):
+            X = pd.Series(X)
+            
+        # Aplicar a transformação baseada no mapping
+        encoded = X.map(self.mapping).fillna(self.prior).values.reshape(-1, 1)
+        
+        # Adicionar ruído se configurado
+        if self.noise_level > 0:
+            noise = np.random.normal(0, self.noise_level, encoded.shape)
+            encoded = encoded + noise
+            
+        return encoded
+        
+    def fit_transform(self, X: Union[pd.Series, np.ndarray], y: Union[pd.Series, np.ndarray]) -> np.ndarray:
+        """
+        Ajusta o encoder e transforma os dados em uma única operação.
+        
+        Args:
+            X: Features categóricas
+            y: Target
+            
+        Returns:
+            Array com valores codificados
+        """
+        return self.fit(X, y).transform(X)
+
 
 class DateTimeTransformer:
     """
@@ -105,15 +200,25 @@ class DateTimeTransformer:
         """Ajusta e transforma em uma única operação."""
         return self.fit(X, y).transform(X)
 
+
 class PreProcessor:
     def __init__(self, config: Optional[Dict] = None):
         self.config = {
             'missing_values_strategy': 'median',
             'outlier_method': 'iqr',  # Opções: 'zscore', 'iqr', 'isolation_forest'
-            'categorical_strategy': 'onehot',
+            'categorical_strategy': 'onehot',  # Opções ampliadas: 'onehot', 'ordinal', 'target', 'label', 'binary'
             'datetime_features': ['year', 'month', 'day', 'weekday', 'is_weekend'],
-            'scaling': 'standard',
+            'scaling': 'standard',  # Opções ampliadas: 'standard', 'minmax', 'robust', 'maxabs', 'power', 'quantile', 'normalize'
+            'numeric_transformers': [],  # Lista de transformadores adicionais para features numéricas
             'verbosity': 1,
+            # Novos parâmetros para configurações específicas
+            'scaling_params': {},  # Parâmetros para o scaler escolhido
+            'binarizer_threshold': 0.5,  # Threshold para Binarizer
+            'kbins_n_bins': 5,  # Número de bins para KBinsDiscretizer
+            'kbins_encode': 'ordinal',  # Estratégia de encoding para KBinsDiscretizer: 'onehot', 'ordinal', 'onehot-dense'
+            'power_transformer_method': 'yeo-johnson',  # Método para PowerTransformer: 'yeo-johnson' ou 'box-cox'
+            'quantile_n_quantiles': 1000,  # Número de quantis para QuantileTransformer
+            'target_encoding_smoothing': 10.0,  # Fator de suavização para TargetEncoder
         }
         if config:
             self.config.update(config)
@@ -124,6 +229,7 @@ class PreProcessor:
         self.fitted = False
         self.feature_names = []
         self.target_col = None
+        self.target_data = None  # Armazenar os dados target para TargetEncoder
         
         self._setup_logging()
         self.logger.info("PreProcessor inicializado com sucesso.")
@@ -225,6 +331,105 @@ class PreProcessor:
         # Aplicar a transformação
         return self.datetime_transformer.transform(df)
     
+    def _get_scaler(self, scaling_type: str) -> Any:
+        """
+        Retorna o scaler apropriado baseado na configuração.
+        
+        Args:
+            scaling_type: Tipo de scaling a ser usado
+            
+        Returns:
+            Instância do scaler configurado
+        """
+        scaling_params = self.config.get('scaling_params', {})
+        
+        if scaling_type == 'standard':
+            return StandardScaler(**scaling_params)
+        elif scaling_type == 'minmax':
+            return MinMaxScaler(**scaling_params)
+        elif scaling_type == 'robust':
+            return RobustScaler(**scaling_params)
+        elif scaling_type == 'maxabs':
+            return MaxAbsScaler(**scaling_params)
+        elif scaling_type == 'power':
+            method = self.config.get('power_transformer_method', 'yeo-johnson')
+            return PowerTransformer(method=method, **scaling_params)
+        elif scaling_type == 'quantile':
+            n_quantiles = self.config.get('quantile_n_quantiles', 1000)
+            return QuantileTransformer(n_quantiles=n_quantiles, **scaling_params)
+        elif scaling_type == 'normalize':
+            return Normalizer(**scaling_params)
+        elif scaling_type == 'kernel':
+            return KernelCenterer()
+        else:
+            self.logger.warning(f"Tipo de scaling '{scaling_type}' não reconhecido. Usando StandardScaler.")
+            return StandardScaler()
+    
+    def _get_additional_numeric_transformers(self) -> List:
+        """
+        Retorna transformadores adicionais para features numéricas.
+        
+        Returns:
+            Lista de transformadores adicionais configurados
+        """
+        transformers = []
+        
+        # Adicionar transformadores solicitados na configuração
+        for transformer_name in self.config.get('numeric_transformers', []):
+            if transformer_name == 'binarizer':
+                threshold = self.config.get('binarizer_threshold', 0.5)
+                transformers.append(('binarizer', Binarizer(threshold=threshold)))
+            elif transformer_name == 'kbins':
+                n_bins = self.config.get('kbins_n_bins', 5)
+                encode = self.config.get('kbins_encode', 'ordinal')
+                transformers.append(('kbins', KBinsDiscretizer(n_bins=n_bins, encode=encode)))
+            elif transformer_name == 'function':
+                # Exemplo de transformador personalizado - usuário precisaria fornecer a função através de scaling_params
+                if 'function_transformer' in self.config.get('scaling_params', {}):
+                    func = self.config['scaling_params']['function_transformer']
+                    transformers.append(('function', FunctionTransformer(func=func)))
+                else:
+                    self.logger.warning("FunctionTransformer solicitado, mas função não fornecida em scaling_params.")
+        
+        return transformers
+    
+    def _get_categorical_transformer(self) -> Pipeline:
+        """
+        Retorna o transformador apropriado para features categóricas baseado na configuração.
+        
+        Returns:
+            Pipeline com o transformador categórico configurado
+        """
+        strategy = self.config.get('categorical_strategy', 'onehot')
+        
+        # Pipeline base com imputação
+        steps = [('imputer', SimpleImputer(strategy='most_frequent'))]
+        
+        # Adicionar o encoder apropriado
+        if strategy == 'onehot':
+            steps.append(('encoder', OneHotEncoder(handle_unknown='ignore', sparse_output=False)))
+        elif strategy == 'ordinal':
+            steps.append(('encoder', OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1)))
+        elif strategy == 'target':
+            # Target Encoder requer dados de target para treinamento
+            if self.target_data is not None:
+                smoothing = self.config.get('target_encoding_smoothing', 10.0)
+                steps.append(('encoder', TargetEncoder(smoothing=smoothing)))
+            else:
+                self.logger.warning("Target encoding solicitado, mas dados de target não disponíveis. Usando OneHotEncoder.")
+                steps.append(('encoder', OneHotEncoder(handle_unknown='ignore', sparse_output=False)))
+        elif strategy == 'label':
+            steps.append(('encoder', LabelEncoder()))
+        elif strategy == 'binary':
+            steps.append(('encoder', LabelBinarizer()))
+        elif strategy == 'multilabel':
+            steps.append(('encoder', MultiLabelBinarizer()))
+        else:
+            self.logger.warning(f"Estratégia categórica '{strategy}' não reconhecida. Usando OneHotEncoder.")
+            steps.append(('encoder', OneHotEncoder(handle_unknown='ignore', sparse_output=False)))
+        
+        return Pipeline(steps)
+
     def _build_transformers(self) -> List:
         """Constrói os transformadores para colunas numéricas e categóricas"""
         # Configurar imputer
@@ -233,31 +438,20 @@ class PreProcessor:
         else:
             num_imputer = SimpleImputer(strategy=self.config['missing_values_strategy'])
         
-        # Configurar scaler
-        scalers = {
-            'standard': StandardScaler(), 
-            'minmax': MinMaxScaler(), 
-            'robust': RobustScaler()
-        }
-        scaler = scalers.get(self.config['scaling'], 'passthrough')
+        # Obter scaler configurado
+        scaler = self._get_scaler(self.config['scaling'])
 
+        # Pipeline base para features numéricas
+        numeric_steps = [('imputer', num_imputer), ('scaler', scaler)]
+        
+        # Adicionar transformadores adicionais
+        numeric_steps.extend(self._get_additional_numeric_transformers())
+        
         # Pipeline para features numéricas
-        numeric_transformer = Pipeline([
-            ('imputer', num_imputer),
-            ('scaler', scaler)
-        ])
+        numeric_transformer = Pipeline(numeric_steps)
 
         # Pipeline para features categóricas
-        categorical_encoder = (
-            OneHotEncoder(handle_unknown='ignore', sparse_output=False) 
-            if self.config['categorical_strategy'] == 'onehot' 
-            else OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1)
-        )
-        
-        categorical_transformer = Pipeline([
-            ('imputer', SimpleImputer(strategy='most_frequent')),
-            ('encoder', categorical_encoder)
-        ])
+        categorical_transformer = self._get_categorical_transformer()
 
         # Montar transformers
         transformers = []
@@ -285,10 +479,11 @@ class PreProcessor:
         self.target_col = target_col
         df_proc = df.copy()
         
-        # Remover coluna alvo se presente
+        # Remover coluna alvo se presente e preservar para target encoding
         if target_col and target_col in df_proc.columns:
+            self.target_data = df_proc[target_col].copy()
             df_proc = df_proc.drop(columns=[target_col])
-            self.logger.info(f"Coluna alvo '{target_col}' removida para processamento")
+            self.logger.info(f"Coluna alvo '{target_col}' removida para processamento e preservada para target encoding")
         
         # Aplicar remoção de outliers
         df_proc = self._remove_outliers(df_proc)
@@ -312,7 +507,26 @@ class PreProcessor:
         self.preprocessor = ColumnTransformer(transformers, remainder='passthrough')
         
         try:
-            self.preprocessor.fit(df_proc)
+            # Se estivermos usando target encoding, configurar manualmente
+            if self.config.get('categorical_strategy') == 'target' and self.target_data is not None:
+                # Ajustar normalmente o preprocessor para colunas numéricas
+                # Para categóricas, precisamos fazer o fit manualmente com os dados do target
+                self.preprocessor.fit(df_proc)
+                
+                # Para cada coluna categórica, tentar ajustar o target encoder separadamente
+                for col in self.column_types.get('categorical', []):
+                    try:
+                        encoder = TargetEncoder(smoothing=self.config.get('target_encoding_smoothing', 10.0))
+                        encoder.fit(df_proc[col], self.target_data)
+                        # Armazenar o encoder ajustado
+                        if not hasattr(self, 'target_encoders'):
+                            self.target_encoders = {}
+                        self.target_encoders[col] = encoder
+                    except Exception as e:
+                        self.logger.warning(f"Erro ao ajustar TargetEncoder para coluna {col}: {e}")
+            else:
+                self.preprocessor.fit(df_proc)
+                
             self.feature_names = df_proc.columns.tolist()
             self.fitted = True
             self.logger.info(f"Preprocessador ajustado com sucesso com {len(self.feature_names)} features")
@@ -355,26 +569,44 @@ class PreProcessor:
         
         # Aplicar transformação
         try:
-            df_transformed = self.preprocessor.transform(df_proc)
-            
-            # Determinar nomes das colunas
-            if hasattr(self.preprocessor, 'get_feature_names_out'):
-                feature_names = self.preprocessor.get_feature_names_out()
+            # Caso especial: se estamos usando target encoding
+            if hasattr(self, 'target_encoders') and self.config.get('categorical_strategy') == 'target':
+                # Aplicar transformação para colunas numéricas normalmente
+                df_transformed = df_proc.copy()
+                
+                # Para categóricas, aplicar cada target encoder separadamente
+                for col, encoder in self.target_encoders.items():
+                    if col in df_transformed.columns:
+                        encoded_values = encoder.transform(df_transformed[col])
+                        df_transformed[f"{col}_encoded"] = encoded_values
+                        df_transformed = df_transformed.drop(columns=[col])
+                
+                # Aplicar outras transformações para colunas numéricas
+                numeric_cols = df_transformed.select_dtypes(include=['number']).columns.tolist()
+                if numeric_cols:
+                    numeric_transformer = self.preprocessor.transformers_[0][1]  # Acessar transformador numérico
+                    numeric_transformed = numeric_transformer.transform(df_transformed[numeric_cols])
+                    
+                    for i, col in enumerate(numeric_cols):
+                        df_transformed[col] = numeric_transformed[:, i]
             else:
-                feature_names = [f"feature_{i}" for i in range(df_transformed.shape[1])]
-
-            # Criar DataFrame com os dados transformados
-            result_df = pd.DataFrame(
-                df_transformed, 
-                index=df_proc.index, 
-                columns=feature_names
-            )
+                # Caminho normal: aplicar todo o preprocessor
+                df_transformed_array = self.preprocessor.transform(df_proc)
+                
+                # Determinar nomes das colunas
+                if hasattr(self.preprocessor, 'get_feature_names_out'):
+                    feature_names = self.preprocessor.get_feature_names_out()
+                else:
+                    feature_names = [f"feature_{i}" for i in range(df_transformed_array.shape[1])]
+                
+                # Criar DataFrame com os dados transformados
+                df_transformed = pd.DataFrame(df_transformed_array, index=df_proc.index, columns=feature_names)
             
             # Adicionar coluna target se existir
             if target_data is not None:
-                result_df[target_col] = target_data.loc[result_df.index]
+                df_transformed[target_col] = target_data.loc[df_transformed.index]
                 
-            return result_df
+            return df_transformed
             
         except Exception as e:
             self.logger.error(f"Erro na transformação dos dados: {e}")
@@ -434,6 +666,31 @@ class PreProcessor:
         preprocessor = joblib.load(filepath)
         preprocessor.logger.info(f"Preprocessador carregado de {filepath}")
         return preprocessor
+        
+    def get_transformer_description(self) -> Dict[str, Any]:
+        """
+        Retorna uma descrição dos transformadores configurados e ativos.
+        
+        Returns:
+            Dicionário com descrição dos transformadores ativos
+        """
+        if not self.fitted:
+            return {"status": "não ajustado"}
+            
+        description = {
+            "numeric_columns": self.column_types.get('numeric', []),
+            "categorical_columns": self.column_types.get('categorical', []),
+            "datetime_columns": self.column_types.get('datetime', []),
+            "transformers": {
+                "scaling": self.config['scaling'],
+                "missing_values": self.config['missing_values_strategy'],
+                "categorical_strategy": self.config['categorical_strategy'],
+                "additional_transformers": self.config.get('numeric_transformers', [])
+            },
+            "output_features": len(self.feature_names),
+        }
+        
+        return description
 
 
 def create_preprocessor(config: Optional[Dict] = None) -> PreProcessor:

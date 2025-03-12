@@ -5,7 +5,7 @@ Um sistema abrangente para automatizar o processamento de dados e a engenharia
 de features em projetos de machine learning.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 from .preprocessor import PreProcessor, create_preprocessor
 from .feature_engineer import FeatureEngineer, create_feature_engineer
