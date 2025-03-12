@@ -156,9 +156,9 @@ graph TD
     
     use_processed & use_raw --> final["Dados Finais\npara Modelo ML"]
     
-    classDef process fill:#f9f,stroke:#333,stroke-width:1px;
-    classDef data fill:#bbf,stroke:#333,stroke-width:1px;
-    classDef decision fill:#fffacd,stroke:#333,stroke-width:1px;
+    classDef process fill:#6b366b,stroke:#333,stroke-width:1px;
+    classDef data fill:#41418a,stroke:#333,stroke-width:1px;
+    classDef decision fill:#948a35,stroke:#333,stroke-width:1px;
     
     class num_proc,cat_proc,dt_proc,na_proc,out_proc,fe1,fe2,fe3,fe4,cv1,cv2,compare process;
     class raw,num,cat,dt,na,out,merged,processed,final data;
