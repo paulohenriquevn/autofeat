@@ -17,6 +17,7 @@ venv
 **.pkl
 **.png
 **.txt
+**.ipynb
 complex_test_results/
 **autofe_demo_results/**
 
