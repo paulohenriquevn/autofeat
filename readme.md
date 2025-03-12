@@ -516,10 +516,62 @@ Embora o CAFE (Component Automated Feature Engineer) seja uma ferramenta poderos
 
 O desenvolvimento do CAFE (Component Automated Feature Engineer) continuará com as seguintes melhorias planejadas:
 
-1. **Gen IA**: Integração com Gen AI para retornar informações relevantes para o usuário.
+### 1. Melhorias no Módulo de Pré-Processamento (PreProcessor)
+**Problemas Identificados:**
+- O método de remoção de outliers usa `Z-Score`, `IQR` e `Isolation Forest`, mas pode ser muito restritivo em alguns casos.
+- Falta um mecanismo de **reporte de outliers** antes da remoção, para permitir uma análise mais detalhada.
+- A estratégia de preenchimento de valores ausentes (`missing_values_strategy`) poderia incluir métodos mais avançados, como **Interpolação Temporal** e **Modelos Preditivos**.
 
-4. **Explainable AI**: Implementação de ferramentas para melhorar a explicabilidade das transformações aplicadas e como elas afetam as predições dos modelos.
+**Sugestões de Melhorias:**
+- Adicionar um **modo de análise exploratória de outliers** antes da remoção, permitindo ao usuário visualizar os dados problemáticos antes da exclusão.
+- Implementar **métodos mais sofisticados para imputação de valores ausentes**, como:
+  - Modelos de regressão para estimar valores ausentes.
+  - Uso de séries temporais para interpolação (exemplo: `pandas.DataFrame.interpolate()`).
+- Incluir **um parâmetro configurável para limitar a remoção de outliers** (exemplo: definir um percentual máximo de amostras a serem excluídas).
 
+---
+
+### 2. Melhorias no Módulo de Engenharia de Features (FeatureEngineer)
+**Problemas Identificados:**
+- A geração de features polinomiais (`generate_features`) pode gerar um número excessivo de novas features, levando à **explosão combinatória**.
+- O método de redução de dimensionalidade `PCA` não avalia se há **correlação negativa** com o target, podendo perder variáveis importantes.
+- O módulo não possui suporte a **interação de variáveis categóricas** além de One-Hot Encoding.
+
+**Sugestões de Melhorias:**
+- Implementar **filtragem automática de features polinomiais redundantes**, usando critérios de importância como:
+  - Seleção de features via **mutual information** ou **SHAP values**.
+  - Filtragem de variáveis com baixa variância.
+- Criar um **método automático para testar diferentes técnicas de redução de dimensionalidade**, como:
+  - Seleção automática de componentes via `PCA` e `UMAP`.
+- Implementar **interações entre variáveis categóricas**, como:
+  - Agrupamento de categorias raras.
+  - Interações entre categorias via métodos como `Target Encoding`.
+
+---
+
+### 3. Melhorias no Módulo de Validação de Performance (PerformanceValidator)
+**Problemas Identificados:**
+- A escolha do melhor conjunto de features é baseada apenas na **acurácia/f1-score**, sem levar em conta a **explicabilidade do modelo**.
+- A validação cruzada não verifica **overfitting** nos dados transformados.
+
+**Sugestões de Melhorias:**
+- Incluir **métricas adicionais** além da acurácia:
+  - Avaliação de **feature importance** para garantir interpretabilidade.
+  - Teste de estabilidade: verificar se os modelos treinados são robustos a pequenas variações nos dados.
+- Implementar **avaliação de overfitting** no pipeline:
+  - Comparar desempenho em treino e validação para detectar ajustes excessivos.
+
+---
+
+### 4. Melhorias no Pipeline de Dados (DataPipeline)
+**Problemas Identificados:**
+- O pipeline não permite **retreinamento incremental** com novos dados sem refazer todo o processo.
+
+**Sugestões de Melhorias:**
+- Criar um **mecanismo de ajuste fino para decisão sobre qual versão dos dados usar**:
+- Permitir ao usuário escolher pesos diferentes para acurácia, interpretabilidade e número de features.
+
+---
 
 ## Conclusão
 
