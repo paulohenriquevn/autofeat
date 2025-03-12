@@ -113,6 +113,7 @@ O componente `PerformanceValidator` é responsável por avaliar e comparar a per
 
 #### Transformação de Datasets pelo CAFE
 
+```mermaid
 graph TD
     subgraph "Dados de Entrada"
         raw[("Dados Brutos")]
@@ -162,6 +163,7 @@ graph TD
     class num_proc,cat_proc,dt_proc,na_proc,out_proc,fe1,fe2,fe3,fe4,cv1,cv2,compare process;
     class raw,num,cat,dt,na,out,merged,processed,final data;
     class decision decision;
+```
 
 #### Configurações disponíveis:
 
