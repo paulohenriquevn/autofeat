@@ -20,7 +20,7 @@ from sklearn.metrics import accuracy_score, classification_report, r2_score, mea
 from sklearn.preprocessing import StandardScaler
 
 # Importar o pipeline com validação
-from data_pipeline import create_data_pipeline
+from cafe.data_pipeline import create_data_pipeline
 
 # Criar diretório para resultados
 OUTPUT_DIR = "autofe_demo_results"

@@ -2,7 +2,7 @@ import logging
 import networkx as nx
 import pandas as pd
 import numpy as np
-from typing import Dict, Callable, Optional, List
+from typing import Dict, Callable, Optional, List, Any, Union
 
 from .preprocessor import PreProcessor
 from .feature_engineer import FeatureEngineer
@@ -171,8 +171,9 @@ class Explorer:
             {"scaling": "robust"},
         ]
 
+        # Lista expandida de configurações para FeatureEngineer
         feature_configs = [
-            # Reduzir o número de configurações e focar em controlar dimensionalidade
+            # Configurações originais
             {"dimensionality_reduction": "pca", "generate_features": False, "correlation_threshold": 0.8},
             {"dimensionality_reduction": None, "generate_features": False, "correlation_threshold": 0.8},
             {"dimensionality_reduction": None, "generate_features": True, "correlation_threshold": 0.8},
@@ -183,11 +184,86 @@ class Explorer:
             {"correlation_threshold": 0.90},
             {"correlation_threshold": 0.85},
             {"correlation_threshold": 0.80},
+            
+            # Novas configurações de seleção de features
+            # SelectKBest com diferentes configurações
+            {
+                "feature_selection": "kbest", 
+                "feature_selection_params": {"k": 10}, 
+                "correlation_threshold": 0.8
+            },
+            {
+                "feature_selection": "kbest", 
+                "feature_selection_params": {"k": 15}, 
+                "correlation_threshold": 0.8
+            },
+            
+            # SelectPercentile com diferentes percentis
+            {
+                "feature_selection": "percentile", 
+                "feature_selection_params": {"percentile": 20}, 
+                "correlation_threshold": 0.8
+            },
+            {
+                "feature_selection": "percentile", 
+                "feature_selection_params": {"percentile": 30}, 
+                "correlation_threshold": 0.8
+            },
+            
+            # SelectFromModel
+            {
+                "feature_selection": "model", 
+                "feature_selection_params": {"threshold": "mean"}, 
+                "correlation_threshold": 0.8
+            },
+            {
+                "feature_selection": "model", 
+                "feature_selection_params": {"threshold": "median"}, 
+                "correlation_threshold": 0.8
+            },
+            
+            # Métodos estatísticos
+            {
+                "feature_selection": "fwe", 
+                "feature_selection_params": {"alpha": 0.05}, 
+                "correlation_threshold": 0.8
+            },
+            {
+                "feature_selection": "fpr", 
+                "feature_selection_params": {"alpha": 0.05}, 
+                "correlation_threshold": 0.8
+            },
+            {
+                "feature_selection": "fdr", 
+                "feature_selection_params": {"alpha": 0.05}, 
+                "correlation_threshold": 0.8
+            },
+            
+            # Combinações com geração de features
+            {
+                "feature_selection": "kbest", 
+                "feature_selection_params": {"k": 10}, 
+                "generate_features": True, 
+                "correlation_threshold": 0.85
+            },
+            {
+                "feature_selection": "percentile", 
+                "feature_selection_params": {"percentile": 20}, 
+                "generate_features": True, 
+                "correlation_threshold": 0.85
+            },
+            {
+                "feature_selection": "model", 
+                "feature_selection_params": {"threshold": "mean"}, 
+                "generate_features": True, 
+                "correlation_threshold": 0.85
+            },
         ]
 
         # Testar cada combinação de preprocessador
         for preproc_config in preprocessor_configs:
-            preproc_name = "_".join([f"{key}-{value}" for key, value in preproc_config.items()])
+            # Criar um nome simplificado para o preprocessador
+            preproc_name = '_'.join([f"{key}-{value}" for key, value in preproc_config.items()])
             logger.info(f"Testando preprocessamento: {preproc_name}")
             
             try:
@@ -206,12 +282,29 @@ class Explorer:
                 
                 # Para cada preprocessamento, testar engenharia de features
                 for feat_config in feature_configs:
-                    feat_name = "_".join([f"{key}-{value}" for key, value in feat_config.items()])
+                    # Criar um nome para a configuração de features
+                    # Precisamos de um tratamento especial para feature_selection_params que é um dict
+                    feat_name_parts = []
+                    for key, value in feat_config.items():
+                        if key == 'feature_selection_params' and isinstance(value, dict):
+                            # Criar uma string para o dicionário de parâmetros
+                            params_str = '-'.join([f"{k}_{v}" for k, v in value.items()])
+                            feat_name_parts.append(f"{key}-{params_str}")
+                        else:
+                            feat_name_parts.append(f"{key}-{value}")
+                    
+                    feat_name = '_'.join(feat_name_parts)
                     logger.info(f"Testando feature engineering: {feat_name} sobre {preproc_name}")
                     
                     try:
                         # Ajustar e transformar com o feature engineer
-                        transformed_df = FeatureEngineer(feat_config).fit(preprocessed_df, target_col=self.target_col).transform(preprocessed_df, target_col=self.target_col)
+                        # Adicionamos o task do target_col à configuração
+                        feat_config_with_task = feat_config.copy()
+                        # Adicionar informação de 'task' para métodos supervisionados se tivermos target_col
+                        if self.target_col:
+                            feat_config_with_task['task'] = 'classification'  # Podemos inferir isso do target se necessário
+                        
+                        transformed_df = FeatureEngineer(feat_config_with_task).fit(preprocessed_df, target_col=self.target_col).transform(preprocessed_df, target_col=self.target_col)
                         
                         if transformed_df.empty:
                             logger.warning(f"A engenharia de features {feat_name} resultou em DataFrame vazio. Pulando.")
@@ -240,7 +333,10 @@ class Explorer:
             return df
     
     def get_best_pipeline_config(self) -> Dict:
-        """Retorna a configuração do melhor pipeline encontrado."""
+        """
+        Retorna a configuração do melhor pipeline encontrado.
+        Versão atualizada para lidar com parâmetros aninhados, como feature_selection_params.
+        """
         best_transformation = self.find_best_transformation()
         if not best_transformation:
             logger.warning("Nenhuma transformação válida encontrada.")
@@ -269,39 +365,64 @@ class Explorer:
             else:
                 preproc_parts.append(part)
         
-        # Processar partes do preprocessador
-        for i in range(1, len(preproc_parts), 2):  # Começar de 1 para pular "preproc_"
-            if i+1 < len(preproc_parts):
+        # Processar partes do preprocessador (lógica original)
+        i = 1  # Começar de 1 para pular "preproc_"
+        while i < len(preproc_parts):
+            # Verificar se temos um par key-value
+            if i + 1 < len(preproc_parts):
                 key = preproc_parts[i]
                 value = preproc_parts[i+1]
                 # Converter strings para tipos apropriados
-                if value == 'True':
-                    value = True
-                elif value == 'False':
-                    value = False
-                elif value.isdigit():
-                    value = int(value)
-                elif value.replace('.', '', 1).isdigit():
-                    value = float(value)
+                value = self._convert_string_to_type(value)
                 preprocessor_config[key] = value
+                i += 2
+            else:
+                i += 1
         
-        # Processar partes do feature engineer
-        for i in range(0, len(feat_parts), 2):
-            if i+1 < len(feat_parts):
+        # Processar partes do feature engineer (lógica atualizada)
+        # Precisamos lidar com parâmetros aninhados como feature_selection_params
+        i = 0
+        feature_selection_params = {}  # Para armazenar parâmetros aninhados
+        inside_nested_params = False
+        current_nested_key = None
+        
+        while i < len(feat_parts):
+            if i + 1 < len(feat_parts):
                 key = feat_parts[i]
                 value = feat_parts[i+1]
-                # Converter strings para tipos apropriados
-                if value == 'True':
-                    value = True
-                elif value == 'False':
-                    value = False
-                elif value.isdigit():
-                    value = int(value)
-                elif value.replace('.', '', 1).isdigit():
-                    value = float(value)
-                elif value == 'None':
-                    value = None
-                feature_config[key] = value
+                
+                # Verificar se estamos entrando em parâmetros aninhados
+                if key == 'feature_selection_params':
+                    inside_nested_params = True
+                    current_nested_key = key
+                    i += 2
+                    continue
+                
+                # Se estamos dentro de parâmetros aninhados, processá-los
+                if inside_nested_params:
+                    # Verificar se o formato indica que ainda estamos dentro de parâmetros aninhados
+                    if '-' in key and '_' in key:
+                        # É um par chave-valor de parâmetros aninhados (ex: "k_10")
+                        nested_key, nested_value = key.split('_', 1)
+                        feature_selection_params[nested_key] = self._convert_string_to_type(nested_value)
+                        i += 1
+                    else:
+                        # Saímos dos parâmetros aninhados
+                        inside_nested_params = False
+                        feature_config[current_nested_key] = feature_selection_params
+                        # Não incrementar i, processar o par atual normalmente
+                    
+                # Processar normalmente se não estamos em parâmetros aninhados
+                if not inside_nested_params:
+                    value = self._convert_string_to_type(value)
+                    feature_config[key] = value
+                    i += 2
+            else:
+                i += 1
+        
+        # Se terminarmos ainda dentro de parâmetros aninhados, finalizá-los
+        if inside_nested_params and current_nested_key:
+            feature_config[current_nested_key] = feature_selection_params
         
         # Se feature_config estiver vazio, adicionar configuração padrão
         # para garantir controle de correlação e evitar expansão excessiva
@@ -315,6 +436,20 @@ class Explorer:
             'preprocessor_config': preprocessor_config,
             'feature_engineer_config': feature_config
         }
+    
+    def _convert_string_to_type(self, value_str: str) -> Any:
+        """Converte uma string para o tipo apropriado."""
+        if value_str == 'True':
+            return True
+        elif value_str == 'False':
+            return False
+        elif value_str == 'None':
+            return None
+        elif value_str.isdigit():
+            return int(value_str)
+        elif value_str.replace('.', '', 1).isdigit():
+            return float(value_str)
+        return value_str
     
     def create_optimal_pipeline(self) -> DataPipeline:
         """Cria um pipeline otimizado com base na melhor configuração encontrada."""

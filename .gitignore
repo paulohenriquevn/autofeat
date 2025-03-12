@@ -18,6 +18,7 @@ venv
 **.png
 **.txt
 complex_test_results/
+**autofe_demo_results/**
 
 # Ambientes virtuais
 cafe-env/
