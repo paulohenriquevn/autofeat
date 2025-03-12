@@ -101,6 +101,7 @@ class PerformanceValidator:
     def evaluate(self, X_original: pd.DataFrame, y: pd.Series, X_transformed: pd.DataFrame) -> Dict:
         """
         Avalia a performance nos dados originais vs. transformados via validação cruzada.
+        Inclui pré-processamento automático para colunas categóricas.
         
         Args:
             X_original: DataFrame com features originais
@@ -146,6 +147,40 @@ class PerformanceValidator:
             
             self.logger.info(f"Datasets alinhados com {len(common_indices)} amostras em comum")
         
+        # NOVO: Pré-processamento para colunas categóricas do dataset original
+        # Isso evitará erros quando tentarmos usar colunas categóricas (strings) diretamente no modelo
+        X_original_processed = X_original.copy()
+        
+        # Identificar colunas categóricas
+        categorical_cols = X_original_processed.select_dtypes(include=['object', 'category']).columns
+        if len(categorical_cols) > 0:
+            self.logger.info(f"Detectadas {len(categorical_cols)} colunas categóricas no dataset original: {list(categorical_cols)}")
+            self.logger.info("Convertendo colunas categóricas para representação numérica")
+            
+            # Usar uma abordagem simples: remover colunas categóricas ou convertê-las
+            # Opção 1: Converter para dummies (One-Hot Encoding)
+            try:
+                X_original_processed = pd.get_dummies(X_original_processed, columns=categorical_cols, drop_first=True)
+                self.logger.info(f"Colunas categóricas convertidas para {X_original_processed.shape[1]} features numéricas")
+            except Exception as e:
+                # Opção 2: Se falhar, remover colunas categóricas
+                self.logger.warning(f"Erro ao converter colunas categóricas: {e}")
+                self.logger.warning(f"Removendo colunas categóricas para avaliação: {list(categorical_cols)}")
+                X_original_processed = X_original_processed.select_dtypes(exclude=['object', 'category'])
+                if X_original_processed.empty:
+                    self.logger.error("Após remover colunas categóricas, o dataset ficou vazio!")
+                    return {
+                        'performance_original': 0.0,
+                        'performance_transformed': 0.0,
+                        'performance_diff': 0.0,
+                        'performance_diff_pct': 0.0,
+                        'best_choice': 'transformed',  # Neste caso, é melhor usar transformado
+                        'scores_original': [0.0],
+                        'scores_transformed': [0.0],
+                        'feature_reduction': 0.0,
+                        'error': "Dataset original sem colunas numéricas"
+                    }
+        
         # Preparar validação cruzada
         if task == 'classification':
             cv = StratifiedKFold(n_splits=cv_folds, shuffle=True, random_state=42)
@@ -158,17 +193,29 @@ class PerformanceValidator:
         # Obter modelo base
         model = self._get_base_model()
         
-        # Avaliar dados originais
-        scores_original = cross_val_score(model, X_original, y, cv=cv, scoring=scoring)
-        self.performance_original = np.mean(scores_original)
+        # Avaliar dados originais pré-processados
+        try:
+            scores_original = cross_val_score(model, X_original_processed, y, cv=cv, scoring=scoring)
+            self.performance_original = np.mean(scores_original)
+        except Exception as e:
+            self.logger.error(f"Erro ao avaliar dados originais: {e}")
+            self.logger.info("Definindo performance original como 0.0")
+            scores_original = np.array([0.0])
+            self.performance_original = 0.0
         
         # Avaliar dados transformados
-        scores_transformed = cross_val_score(model, X_transformed, y, cv=cv, scoring=scoring)
-        self.performance_transformed = np.mean(scores_transformed)
+        try:
+            scores_transformed = cross_val_score(model, X_transformed, y, cv=cv, scoring=scoring)
+            self.performance_transformed = np.mean(scores_transformed)
+        except Exception as e:
+            self.logger.error(f"Erro ao avaliar dados transformados: {e}")
+            self.logger.info("Definindo performance transformada como 0.0")
+            scores_transformed = np.array([0.0])
+            self.performance_transformed = 0.0
         
         # Calcular diferença de performance
         performance_diff = self.performance_transformed - self.performance_original
-        performance_diff_pct = performance_diff / abs(self.performance_original) * 100
+        performance_diff_pct = (performance_diff / max(abs(self.performance_original), 1e-10)) * 100
         
         # Decidir qual dataset usar
         max_drop = self.config['max_performance_drop']
@@ -198,7 +245,8 @@ class PerformanceValidator:
             self.logger.info(f"Melhor escolha: {self.best_choice}")
         
         return results
-    
+
+
     def get_best_dataset(self, X_original: pd.DataFrame, y: pd.Series, X_transformed: pd.DataFrame, 
                          include_validation_results: bool = False) -> Union[pd.DataFrame, Tuple[pd.DataFrame, Dict]]:
         """
@@ -225,7 +273,7 @@ class PerformanceValidator:
     def get_feature_importance(self, X_original: pd.DataFrame, y: pd.Series, feature_names: Optional[List[str]] = None) -> pd.DataFrame:
         """
         Retorna a importância das features usando um modelo de árvore como RandomForest.
-        Útil para entender quais features são mais importantes.
+        Inclui pré-processamento para colunas categóricas.
         
         Args:
             X_original: DataFrame com os dados para avaliação
@@ -235,23 +283,55 @@ class PerformanceValidator:
         Returns:
             DataFrame com as features ordenadas por importância
         """
+        # Préprocessar colunas categóricas, similar ao método evaluate
+        X_processed = X_original.copy()
+        
+        # Identificar colunas categóricas
+        categorical_cols = X_processed.select_dtypes(include=['object', 'category']).columns
+        if len(categorical_cols) > 0:
+            self.logger.info(f"Detectadas {len(categorical_cols)} colunas categóricas ao calcular importância: {list(categorical_cols)}")
+            self.logger.info("Convertendo colunas categóricas para representação numérica")
+            
+            try:
+                # Converter para dummies (One-Hot Encoding)
+                X_processed = pd.get_dummies(X_processed, columns=categorical_cols, drop_first=True)
+                self.logger.info(f"Colunas categóricas convertidas para {X_processed.shape[1]} features numéricas")
+            except Exception as e:
+                # Se falhar, remover colunas categóricas
+                self.logger.warning(f"Erro ao converter colunas categóricas: {e}")
+                self.logger.warning(f"Removendo colunas categóricas para cálculo de importância: {list(categorical_cols)}")
+                X_processed = X_processed.select_dtypes(exclude=['object', 'category'])
+        
+        # Verificar se ainda temos features após processamento
+        if X_processed.empty:
+            self.logger.error("Não há features numéricas para calcular importância!")
+            # Retornar DataFrame vazio ou com mensagem
+            return pd.DataFrame({'feature': ['ERRO: Sem features numéricas'], 'importance': [0]})
+        
+        # Configurar modelo apropriado
         if self.config['task'] == 'classification':
             model = RandomForestClassifier(n_estimators=100, random_state=42)
         else:
             from sklearn.ensemble import RandomForestRegressor
             model = RandomForestRegressor(n_estimators=100, random_state=42)
-            
+        
         # Ajustar modelo
-        model.fit(X_original, y)
-        
-        # Obter nomes das features
-        if feature_names is None:
-            feature_names = X_original.columns.tolist()
+        try:
+            model.fit(X_processed, y)
             
-        # Calcular importância
-        importance = pd.DataFrame({
-            'feature': feature_names,
-            'importance': model.feature_importances_
-        }).sort_values('importance', ascending=False)
+            # Obter nomes das features
+            if feature_names is None:
+                feature_names = X_processed.columns.tolist()
+            
+            # Calcular importância
+            importance = pd.DataFrame({
+                'feature': feature_names,
+                'importance': model.feature_importances_
+            }).sort_values('importance', ascending=False)
+            
+            return importance
         
-        return importance
+        except Exception as e:
+            self.logger.error(f"Erro ao calcular importância de features: {e}")
+            # Retornar DataFrame vazio com mensagem de erro
+            return pd.DataFrame({'feature': [f'ERRO: {str(e)}'], 'importance': [0]})
