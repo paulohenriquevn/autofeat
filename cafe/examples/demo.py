@@ -27,51 +27,6 @@ OUTPUT_DIR = "autofe_demo_results"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 
-def load_local_dataset(file_path, dataset_type='', index_col=0, target_col=None):
-    """
-    Carrega um dataset local de vários formatos (CSV, Excel, etc.).
-    
-    Args:
-        file_path: Caminho para o arquivo de dados
-        target_col: Nome da coluna alvo (opcional)
-        header: Se o arquivo tem cabeçalho ('infer' para detectar automaticamente)
-        index_col: Coluna a ser usada como índice
-        sep: Separador para arquivos CSV
-        
-    Returns:
-        DataFrame carregado, tipo de dataset ('classification' ou 'regression')
-    """
-    from pathlib import Path
-    file_path = Path(file_path)
-    
-    # Verificar se o arquivo existe
-    if not file_path.exists():
-        raise FileNotFoundError(f"Arquivo não encontrado: {file_path}")
-    
-    # Carregar o arquivo com base na extensão
-    ext = file_path.suffix.lower()
-    
-    try:
-        if ext == '.csv':
-            df = pd.read_csv(file_path, index_col=index_col,)
-        elif ext in ['.xls', '.xlsx']:
-            df = pd.read_excel(file_path, index_col=index_col)
-        elif ext == '.json':
-            df = pd.read_json(file_path)
-        elif ext == '.parquet':
-            df = pd.read_parquet(file_path)
-        elif ext == '.feather':
-            df = pd.read_feather(file_path)
-        elif ext == '.pickle' or ext == '.pkl':
-            df = pd.read_pickle(file_path)
-        else:
-            raise ValueError(f"Formato de arquivo não suportado: {ext}")
-    except Exception as e:
-        print(f"Erro ao carregar o arquivo {file_path}: {e}")
-        raise
-    
-    return df, dataset_type, ['Low', 'Medium', 'High']
-
 def create_complex_timeseries_dataset():
     """
     Cria um dataset financeiro complexo com características temporais, 
