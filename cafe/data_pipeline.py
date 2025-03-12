@@ -1,11 +1,10 @@
 import pandas as pd
 import logging
-from typing import Dict, Optional, Union, Tuple, List
-from preprocessor import PreProcessor
-from feature_engineer import FeatureEngineer
+from typing import Dict, Optional
 
-# Importar o novo validador de performance
-from performance_validator import PerformanceValidator
+from .preprocessor import PreProcessor
+from .feature_engineer import FeatureEngineer
+from .performance_validator import PerformanceValidator
 
 class DataPipeline:
     """

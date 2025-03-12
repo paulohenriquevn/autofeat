@@ -4,9 +4,9 @@ import pandas as pd
 import numpy as np
 from typing import Dict, Callable, Optional, List
 
-from preprocessor import PreProcessor
-from feature_engineer import FeatureEngineer
-from data_pipeline import DataPipeline
+from .preprocessor import PreProcessor
+from .feature_engineer import FeatureEngineer
+from .data_pipeline import DataPipeline
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("AutoFE.Explorer")

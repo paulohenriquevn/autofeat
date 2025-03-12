@@ -20,6 +20,7 @@ venv
 complex_test_results/
 
 # Ambientes virtuais
+cafe-env/
 venv/
 env/
 .env/
