@@ -6,9 +6,27 @@ O CAFE (Component Automated Feature Engineer) é um sistema abrangente para auto
 
 Esta documentação fornece uma explicação detalhada da arquitetura, componentes e uso do sistema CAFE (Component Automated Feature Engineer).
 
+## Instalação
+
+```bash
+pip install cafe-autofe
+```
+
+## Requisitos do Sistema
+
+- Python 3.7+
+- Dependências principais:
+  - pandas>=1.3.0
+  - numpy>=1.20.0
+  - scikit-learn>=1.0.0
+  - matplotlib>=3.4.0
+  - seaborn>=0.11.0
+  - joblib>=1.1.0
+  - networkx>=3.4.2
+
 ## Arquitetura do Sistema
 
-O sistema CAFE (Component Automated Feature Engineer) é composto por quatro componentes principais:
+O sistema CAFE é composto por cinco componentes principais:
 
 1. **PreProcessor**: Responsável pela limpeza e transformação inicial dos dados brutos.
 2. **FeatureEngineer**: Gera e seleciona features de alta qualidade.
@@ -41,75 +59,6 @@ O diagrama abaixo ilustra a interação entre esses componentes:
                         │   componentes)    │
                         └───────────────────┘
 ```
-
-## Componentes Principais
-
-### PreProcessor
-
-O componente `PreProcessor` é responsável pelo pré-processamento dos dados brutos, realizando operações como:
-
-- Tratamento de valores ausentes
-- Detecção e tratamento de outliers
-- Codificação de variáveis categóricas
-- Normalização/padronização de dados
-- Processamento de colunas de data/hora
-
-#### Principais métodos:
-
-- `fit(df, target_col=None)`: Aprende parâmetros dos dados de treinamento
-- `transform(df, target_col=None)`: Aplica transformações aos dados
-- `fit_transform(df, target_col=None)`: Combina fit e transform em uma operação
-
-#### Configurações disponíveis:
-
-| Parâmetro | Tipo | Descrição | Valores possíveis |
-|-----------|------|-----------|-------------------|
-| `missing_values_strategy` | string | Estratégia para tratar valores ausentes | 'mean', 'median', 'most_frequent', 'knn' |
-| `outlier_method` | string | Método para detecção de outliers | 'zscore', 'iqr', 'isolation_forest', 'none' |
-| `categorical_strategy` | string | Estratégia para codificação de variáveis categóricas | 'onehot', 'ordinal' |
-| `datetime_features` | lista | Features a extrair de colunas de data/hora | ['year', 'month', 'day', 'weekday', 'is_weekend', etc.] |
-| `scaling` | string | Método de normalização/padronização | 'standard', 'minmax', 'robust' |
-| `verbosity` | int | Nível de detalhamento dos logs | 0, 1, 2 |
-
-### FeatureEngineer
-
-O componente `FeatureEngineer` é responsável pela geração e seleção de features, implementando operações como:
-
-- Geração de features polinomiais
-- Remoção de features altamente correlacionadas
-- Redução de dimensionalidade
-- Seleção de features baseada em importância
-
-#### Principais métodos:
-
-- `fit(df, target_col=None)`: Aprende transformações de engenharia de features
-- `transform(df, target_col=None)`: Aplica transformações aos dados
-- `fit_transform(df, target_col=None)`: Combina fit e transform em uma operação
-
-#### Configurações disponíveis:
-
-| Parâmetro | Tipo | Descrição | Valores possíveis |
-|-----------|------|-----------|-------------------|
-| `dimensionality_reduction` | string/None | Método de redução de dimensionalidade | 'pca', None |
-| `feature_selection` | string/None | Método de seleção de features | 'variance', 'mutual_info', None |
-| `generate_features` | bool | Se deve gerar features polinomiais | True, False |
-| `correlation_threshold` | float | Limiar para detecção de alta correlação | 0.0 a 1.0 |
-| `min_pca_components` | int | Número mínimo de componentes PCA | > 0 |
-| `verbosity` | int | Nível de detalhamento dos logs | 0, 1, 2 |
-
-### PerformanceValidator
-
-O componente `PerformanceValidator` é responsável por avaliar e comparar a performance de modelos treinados com diferentes configurações:
-
-- Compara performance entre dados originais e transformados
-- Utiliza validação cruzada para estimativas robustas
-- Decide automaticamente qual conjunto de dados usar
-
-#### Principais métodos:
-
-- `evaluate(X_original, y, X_transformed)`: Avalia a performance nos dois conjuntos de dados
-- `get_best_dataset(X_original, y, X_transformed)`: Retorna o melhor dataset com base na avaliação
-- `get_feature_importance(X, y)`: Calcula a importância das features
 
 #### Transformação de Datasets pelo CAFE
 
@@ -165,69 +114,11 @@ graph TD
     class decision decision;
 ```
 
-#### Configurações disponíveis:
-
-| Parâmetro | Tipo | Descrição | Valores possíveis |
-|-----------|------|-----------|-------------------|
-| `max_performance_drop` | float | Máxima queda de performance permitida | 0.0 a 1.0 (ex: 0.05 = 5%) |
-| `cv_folds` | int | Número de folds para validação cruzada | > 0 |
-| `metric` | string | Métrica para avaliar performance | 'accuracy', 'f1', 'rmse', 'r2' |
-| `task` | string | Tipo de tarefa | 'classification', 'regression' |
-| `base_model` | string | Modelo base para avaliação | 'rf', 'lr', 'knn' |
-| `verbose` | bool | Se deve mostrar logs detalhados | True, False |
-
-### DataPipeline
-
-O componente `DataPipeline` integra o `PreProcessor`, `FeatureEngineer` e `PerformanceValidator` em um único pipeline unificado:
-
-- Combina todas as etapas de processamento de forma sequencial
-- Gerencia o fluxo de dados entre os componentes
-- Fornece uma API simplificada para o usuário final
-
-#### Principais métodos:
-
-- `fit(df, target_col=None)`: Ajusta o pipeline completo aos dados
-- `transform(df, target_col=None)`: Aplica o pipeline aos dados
-- `fit_transform(df, target_col=None)`: Combina fit e transform em uma operação
-- `save(base_path)` e `load(base_path)`: Salva e carrega o pipeline
-
-### Explorer
-
-O componente `Explorer` automatiza a busca pela melhor configuração para um conjunto de dados específico:
-
-- Testa diferentes combinações de configurações
-- Avalia cada configuração usando heurísticas
-- Retorna a melhor configuração encontrada
-
-#### Principais métodos:
-
-- `analyze_transformations(df)`: Testa diferentes transformações e retorna o melhor dataset
-- `get_best_pipeline_config()`: Retorna a configuração ótima do pipeline
-- `create_optimal_pipeline()`: Cria um pipeline otimizado
-
-## Guia de Uso
-
-### Instalação
-
-Para instalar o CAFE (Component Automated Feature Engineer), é necessário ter os seguintes pacotes:
-
-```
-pandas>=1.3.0
-numpy>=1.20.0
-scikit-learn>=1.0.0
-matplotlib>=3.4.0
-seaborn>=0.11.0
-joblib>=1.1.0
-networkx>=3.4.2
-```
-
-### Exemplo Básico
+## Exemplo de Uso Rápido
 
 ```python
 import pandas as pd
-from preprocessor import PreProcessor
-from feature_engineer import FeatureEngineer
-from data_pipeline import DataPipeline
+from cafe import DataPipeline
 
 # Carregar dados
 df = pd.read_csv('dataset.csv')
@@ -242,12 +133,11 @@ df_transformed = pipeline.fit_transform(df, target_col='target')
 pipeline.save('pipeline_model')
 ```
 
-### Usando o Explorer para Encontrar a Melhor Configuração
+## Utilizando o Explorer para Encontrar a Melhor Configuração
 
 ```python
 import pandas as pd
-from explorer import Explorer
-from data_pipeline import DataPipeline
+from cafe import Explorer, DataPipeline
 
 # Carregar dados
 df = pd.read_csv('dataset.csv')
@@ -269,172 +159,286 @@ pipeline = DataPipeline(
 df_transformed = pipeline.fit_transform(df, target_col='target')
 ```
 
-### Treinamento de Modelo com Dados Transformados
+## Componentes e Configurações Detalhadas
+
+### 1. PreProcessor
+
+O componente `PreProcessor` é responsável pelo pré-processamento dos dados brutos, realizando operações como tratamento de valores ausentes, detecção e tratamento de outliers, codificação de variáveis categóricas, normalização/padronização de dados e processamento de colunas de data/hora.
+
+#### Configurações Disponíveis:
+
+| Parâmetro | Tipo | Descrição | Valores possíveis |
+|-----------|------|-----------|-------------------|
+| `missing_values_strategy` | string | Estratégia para tratar valores ausentes | 'mean', 'median', 'most_frequent', 'knn' |
+| `outlier_method` | string | Método para detecção de outliers | 'zscore', 'iqr', 'isolation_forest', 'none' |
+| `categorical_strategy` | string | Estratégia para codificação de variáveis categóricas | 'onehot', 'ordinal', 'target', 'label', 'binary', 'multilabel' |
+| `datetime_features` | lista | Features a extrair de colunas de data/hora | ['year', 'month', 'day', 'weekday', 'quarter', 'is_weekend', 'hour', 'minute', 'second', 'is_month_start', 'is_month_end', 'is_year_start', 'is_year_end', 'days_in_month'] |
+| `scaling` | string | Método de normalização/padronização | 'standard', 'minmax', 'robust', 'maxabs', 'power', 'quantile', 'normalize', 'kernel' |
+| `numeric_transformers` | lista | Transformadores adicionais para features numéricas | ['binarizer', 'kbins', 'function'] |
+| `verbosity` | int | Nível de detalhamento dos logs | 0, 1, 2 |
+| `scaling_params` | dict | Parâmetros específicos para o método de scaling | {} |
+| `binarizer_threshold` | float | Limiar para o Binarizer | 0.0 a 1.0 |
+| `kbins_n_bins` | int | Número de bins para KBinsDiscretizer | > 0 |
+| `kbins_encode` | string | Estratégia de encoding para KBinsDiscretizer | 'onehot', 'ordinal', 'onehot-dense' |
+| `power_transformer_method` | string | Método para PowerTransformer | 'yeo-johnson', 'box-cox' |
+| `quantile_n_quantiles` | int | Número de quantis para QuantileTransformer | > 0 |
+| `target_encoding_smoothing` | float | Fator de suavização para TargetEncoder | > 0.0 |
+
+### 2. FeatureEngineer
+
+O componente `FeatureEngineer` é responsável pela geração e seleção de features, implementando operações como geração de features polinomiais, remoção de features altamente correlacionadas, redução de dimensionalidade e seleção de features baseada em importância.
+
+#### Configurações Disponíveis:
+
+| Parâmetro | Tipo | Descrição | Valores possíveis |
+|-----------|------|-----------|-------------------|
+| `dimensionality_reduction` | string/None | Método de redução de dimensionalidade | 'pca', None |
+| `feature_selection` | string/None | Método de seleção de features | 'variance', 'kbest', 'percentile', 'model', 'fwe', 'fpr', 'fdr', None |
+| `feature_selection_params` | dict | Parâmetros específicos para seleção de features | {} |
+| `generate_features` | bool | Se deve gerar features polinomiais | True, False |
+| `correlation_threshold` | float | Limiar para detecção de alta correlação | 0.0 a 1.0 |
+| `min_pca_components` | int | Número mínimo de componentes PCA | > 0 |
+| `task` | string | Tipo de tarefa (para métodos supervisionados) | 'classification', 'regression' |
+| `verbosity` | int | Nível de detalhamento dos logs | 0, 1, 2 |
+
+#### Parâmetros de Seleção de Features:
+
+Para o parâmetro `feature_selection_params`, as opções variam de acordo com o método de seleção:
+
+- Para `kbest`:
+  ```python
+  {
+      'k': 10,  # Número de features a selecionar
+      'score_func': 'mutual_info'  # 'mutual_info', 'f_classif', 'chi2' (para classificação) ou 'f_regression' (para regressão)
+  }
+  ```
+
+- Para `percentile`:
+  ```python
+  {
+      'percentile': 20,  # Percentual de features a selecionar
+      'score_func': 'mutual_info'
+  }
+  ```
+
+- Para `model`:
+  ```python
+  {
+      'threshold': 'mean',  # 'mean', 'median' ou valor numérico
+      'estimator': None  # Se None, usa RandomForest por padrão
+  }
+  ```
+
+- Para `fwe`, `fpr`, `fdr`:
+  ```python
+  {
+      'alpha': 0.05,  # Nível de significância
+      'score_func': 'mutual_info'
+  }
+  ```
+
+### 3. PerformanceValidator
+
+O componente `PerformanceValidator` é responsável por avaliar e comparar a performance de modelos treinados com diferentes conjuntos de dados, utilizando validação cruzada para estimativas robustas e decidindo automaticamente qual conjunto de dados usar.
+
+#### Configurações Disponíveis:
+
+| Parâmetro | Tipo | Descrição | Valores possíveis |
+|-----------|------|-----------|-------------------|
+| `max_performance_drop` | float | Máxima queda de performance permitida | 0.0 a 1.0 (ex: 0.05 = 5%) |
+| `cv_folds` | int | Número de folds para validação cruzada | > 0 |
+| `metric` | string | Métrica para avaliar performance | 'accuracy', 'f1', 'rmse', 'r2' |
+| `task` | string | Tipo de tarefa | 'classification', 'regression' |
+| `base_model` | string | Modelo base para avaliação | 'rf', 'lr', 'knn' |
+| `verbose` | bool | Se deve mostrar logs detalhados | True, False |
+
+### 4. DataPipeline
+
+O componente `DataPipeline` integra o `PreProcessor`, `FeatureEngineer` e `PerformanceValidator` em um único pipeline unificado, combinando todas as etapas de processamento de forma sequencial e gerenciando o fluxo de dados entre os componentes.
+
+#### Configurações Disponíveis:
+
+| Parâmetro | Tipo | Descrição | Valores possíveis |
+|-----------|------|-----------|-------------------|
+| `preprocessor_config` | dict | Configuração para o preprocessador | Ver configurações do PreProcessor |
+| `feature_engineer_config` | dict | Configuração para o engenheiro de features | Ver configurações do FeatureEngineer |
+| `validator_config` | dict | Configuração para o validador de performance | Ver configurações do PerformanceValidator |
+| `auto_validate` | bool | Se deve aplicar validação automática | True, False |
+
+### 5. Explorer
+
+O componente `Explorer` automatiza a busca pela melhor configuração para um conjunto de dados específico, testando diferentes combinações de configurações, avaliando cada configuração usando heurísticas e retornando a melhor configuração encontrada.
+
+#### Principais Métodos:
+
+- `analyze_transformations(df)`: Testa diferentes transformações e retorna o melhor dataset
+- `get_best_pipeline_config()`: Retorna a configuração ótima do pipeline
+- `create_optimal_pipeline()`: Cria um pipeline otimizado
+- `visualize_transformations(output_path=None)`: Visualiza a árvore de transformações
+- `get_transformation_statistics()`: Fornece estatísticas detalhadas sobre as transformações
+- `export_transformation_graph(output_path)`: Exporta a árvore em formato GraphML
+- `get_feature_importance_analysis(df)`: Analisa importância de features antes e depois
+
+## Avançado: Transformadores Específicos
+
+### Transformadores no PreProcessor:
+
+#### Padronização e Normalização:
+- **StandardScaler**: Padroniza features pela remoção da média e escala para variância unitária.
+- **MinMaxScaler**: Escala features para um intervalo específico (geralmente [0, 1]).
+- **RobustScaler**: Usa estatísticas robustas a outliers para escalar features.
+- **MaxAbsScaler**: Escala pelo valor máximo absoluto.
+- **Normalizer**: Normaliza amostras para norma unitária.
+
+#### Transformações Não-Lineares:
+- **PowerTransformer**: Aplica transformações 'yeo-johnson' ou 'box-cox' para aproximar distribuição normal.
+- **QuantileTransformer**: Transforma features baseada em quantis.
+- **KBinsDiscretizer**: Discretiza features contínuas em intervalos.
+
+#### Codificação Categórica:
+- **OneHotEncoder**: Codificação one-hot para variáveis categóricas.
+- **OrdinalEncoder**: Codificação ordinal para variáveis categóricas.
+- **LabelBinarizer**: Binariza rótulos.
+- **LabelEncoder**: Codifica rótulos com valores entre 0 e n_classes-1.
+- **MultiLabelBinarizer**: Binariza múltiplos rótulos.
+- **TargetEncoder**: Substitui variáveis categóricas pela média do target.
+
+### Selecionadores de Features:
+
+- **SelectKBest**: Seleciona as k melhores features.
+- **SelectPercentile**: Seleciona um percentual das melhores features.
+- **SelectFromModel**: Utiliza um modelo para selecionar features relevantes.
+- **SelectFwe**: Controle de erro familiar por teste múltiplo.
+- **SelectFpr**: Seleciona features baseado em false positive rate.
+- **SelectFdr**: Seleciona features baseado em false discovery rate.
+- **VarianceThreshold**: Remove features com baixa variância.
+
+## Exemplos de Configurações Completas
+
+### 1. Configuração para Dados com Valores Ausentes
 
 ```python
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score
-
-# Dividir em conjuntos de treino e teste
-X = df_transformed.drop(columns=['target'])
-y = df_transformed['target']
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-# Treinar modelo
-model = RandomForestClassifier(n_estimators=100, random_state=42)
-model.fit(X_train, y_train)
-
-# Avaliar modelo
-y_pred = model.predict(X_test)
-accuracy = accuracy_score(y_test, y_pred)
-print(f"Acurácia: {accuracy:.4f}")
-```
-
-### Fluxo de Trabalho Completo
-
-```python
-import pandas as pd
-from preprocessor import PreProcessor
-from feature_engineer import FeatureEngineer
-from data_pipeline import DataPipeline
-from explorer import Explorer
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, classification_report
-
-# 1. Carregar e dividir os dados
-df = pd.read_csv('dataset.csv')
-train_df, test_df = train_test_split(df, test_size=0.3, random_state=42, stratify=df['target'])
-
-# 2. Encontrar a melhor configuração usando o Explorer
-explorer = Explorer(target_col='target')
-_ = explorer.analyze_transformations(train_df)
-best_config = explorer.get_best_pipeline_config()
-
-print("Melhor configuração encontrada:")
-print(f"Preprocessor: {best_config.get('preprocessor_config', {})}")
-print(f"FeatureEngineer: {best_config.get('feature_engineer_config', {})}")
-
-# 3. Criar e ajustar o pipeline com a configuração ótima
-pipeline = DataPipeline(
-    preprocessor_config=best_config.get('preprocessor_config', {}),
-    feature_engineer_config=best_config.get('feature_engineer_config', {})
-)
-
-# 4. Transformar os dados de treino e teste
-train_transformed = pipeline.fit_transform(train_df, target_col='target')
-test_transformed = pipeline.transform(test_df, target_col='target')
-
-# 5. Treinar e avaliar o modelo
-X_train = train_transformed.drop(columns=['target'])
-y_train = train_transformed['target']
-X_test = test_transformed.drop(columns=['target'])
-y_test = test_transformed['target']
-
-model = RandomForestClassifier(n_estimators=100, random_state=42)
-model.fit(X_train, y_train)
-y_pred = model.predict(X_test)
-
-print(f"Acurácia: {accuracy_score(y_test, y_pred):.4f}")
-print("\nRelatório de classificação:")
-print(classification_report(y_test, y_pred))
-
-# 6. Salvar o pipeline para uso futuro
-pipeline.save('optimal_pipeline')
-```
-
-## Casos de Uso Especializados
-
-### Processamento de Dados Temporais
-
-O CAFE (Component Automated Feature Engineer) tem capacidade específica para processar colunas de data/hora, extraindo características temporais relevantes:
-
-```python
-# Configuração para processamento de datas
 preprocessor_config = {
-    'datetime_features': ['year', 'month', 'day', 'weekday', 'hour', 'minute', 'is_weekend'],
-    'scaling': 'standard',
-    'missing_values_strategy': 'median'
+    'missing_values_strategy': 'knn',  # Usa KNN para imputação
+    'outlier_method': 'none',          # Desativa detecção de outliers
+    'scaling': 'robust',               # Usa escalonamento robusto
+    'verbosity': 1
 }
 
-pipeline = DataPipeline(preprocessor_config=preprocessor_config)
-df_transformed = pipeline.fit_transform(df, target_col='target')
-```
-
-### Controle de Dimensionalidade
-
-Para datasets de alta dimensionalidade, o CAFE (Component Automated Feature Engineer) fornece configurações para controlar o crescimento do número de features:
-
-```python
-# Configuração para controle de dimensionalidade
 feature_engineer_config = {
-    'correlation_threshold': 0.8,  # Remove features altamente correlacionadas
-    'generate_features': False,    # Desativa geração automática de features
-    'dimensionality_reduction': 'pca',  # Aplica PCA para redução
-    'feature_selection': 'variance'  # Seleciona features por variância
+    'correlation_threshold': 0.9,      # Limiar mais permissivo
+    'generate_features': False,        # Desativa geração de features
+    'feature_selection': None
 }
 
-pipeline = DataPipeline(feature_engineer_config=feature_engineer_config)
-df_transformed = pipeline.fit_transform(df, target_col='target')
-```
-
-### Tratamento de Dados com Ruído
-
-Para dados com ruído, outliers ou valores ausentes:
-
-```python
-# Configuração para dados com ruído
-preprocessor_config = {
-    'missing_values_strategy': 'knn',  # Usa KNN para imputação de valores ausentes
-    'outlier_method': 'isolation_forest',  # Identifica outliers com IsolationForest
-    'scaling': 'robust'  # Usa escalonamento robusto menos sensível a outliers
-}
-
-pipeline = DataPipeline(preprocessor_config=preprocessor_config)
-df_transformed = pipeline.fit_transform(df, target_col='target')
-```
-
-### Otimização de Pipeline para Performance
-
-Para otimizar a performance do modelo final:
-
-```python
-# Configuração com validação de performance
 pipeline = DataPipeline(
-    preprocessor_config={'scaling': 'standard'},
-    feature_engineer_config={'correlation_threshold': 0.8},
-    validator_config={
-        'max_performance_drop': 0.05,  # Permite até 5% de queda na performance
-        'cv_folds': 5,  # Usa 5 folds de validação cruzada
-        'metric': 'accuracy',  # Métrica para avaliar a performance
-        'task': 'classification'  # Tipo de tarefa
-    },
-    auto_validate=True  # Ativa validação automática
+    preprocessor_config=preprocessor_config,
+    feature_engineer_config=feature_engineer_config
 )
-
-df_transformed = pipeline.fit_transform(df, target_col='target')
-validation_results = pipeline.get_validation_results()
-print(f"Melhor escolha: {validation_results['best_choice']}")
 ```
 
-## Referências e Recursos Adicionais
+### 2. Configuração para Alta Dimensionalidade
 
-- [Scikit-learn](https://scikit-learn.org/stable/): Biblioteca base usada para implementação dos algoritmos de ML
-- [Pandas](https://pandas.pydata.org/docs/): Biblioteca para manipulação de dados usada extensivamente pelo CAFE (Component Automated Feature Engineer)
-- [Feature Engineering for Machine Learning](https://www.oreilly.com/library/view/feature-engineering-for/9781491953235/): Livro de referência sobre técnicas de engenharia de features
+```python
+preprocessor_config = {
+    'missing_values_strategy': 'median',
+    'scaling': 'standard'
+}
+
+feature_engineer_config = {
+    'dimensionality_reduction': 'pca',
+    'feature_selection': 'model',
+    'feature_selection_params': {
+        'threshold': 'mean'
+    },
+    'correlation_threshold': 0.8,
+    'generate_features': False
+}
+
+pipeline = DataPipeline(
+    preprocessor_config=preprocessor_config,
+    feature_engineer_config=feature_engineer_config,
+    auto_validate=True
+)
+```
+
+### 3. Configuração para Dados Categóricos de Alta Cardinalidade
+
+```python
+preprocessor_config = {
+    'categorical_strategy': 'target',
+    'target_encoding_smoothing': 10.0,
+    'scaling': 'standard'
+}
+
+feature_engineer_config = {
+    'feature_selection': 'kbest',
+    'feature_selection_params': {
+        'k': 15,
+        'score_func': 'mutual_info'
+    }
+}
+
+pipeline = DataPipeline(
+    preprocessor_config=preprocessor_config,
+    feature_engineer_config=feature_engineer_config
+)
+```
+
+### 4. Configuração para Dados Temporais
+
+```python
+preprocessor_config = {
+    'datetime_features': ['year', 'month', 'day', 'weekday', 'is_weekend', 'quarter'],
+    'scaling': 'minmax'
+}
+
+feature_engineer_config = {
+    'correlation_threshold': 0.85,
+    'generate_features': True
+}
+
+pipeline = DataPipeline(
+    preprocessor_config=preprocessor_config,
+    feature_engineer_config=feature_engineer_config
+)
+```
+
+### 5. Configuração para Transformação Avançada de Variáveis Numéricas
+
+```python
+preprocessor_config = {
+    'scaling': 'power',
+    'power_transformer_method': 'yeo-johnson',
+    'numeric_transformers': ['kbins'],
+    'kbins_n_bins': 10,
+    'kbins_encode': 'ordinal'
+}
+
+feature_engineer_config = {
+    'feature_selection': 'percentile',
+    'feature_selection_params': {
+        'percentile': 30
+    }
+}
+
+pipeline = DataPipeline(
+    preprocessor_config=preprocessor_config,
+    feature_engineer_config=feature_engineer_config
+)
+```
 
 ## Perguntas Frequentes
 
-### Quando devo usar o CAFE (Component Automated Feature Engineer)?
+### Quando devo usar o CAFE?
 
-O CAFE (Component Automated Feature Engineer) é especialmente útil quando:
+O CAFE é especialmente útil quando:
 - Você tem datasets complexos com diferentes tipos de dados
 - Precisa automatizar o processo de pré-processamento e feature engineering
 - Deseja garantir que transformações melhoram a performance do modelo
 - Tem datasets com características temporais ou categóricas que precisam de tratamento específico
 
-### O CAFE (Component Automated Feature Engineer) funciona com grandes conjuntos de dados?
+### O CAFE funciona com grandes conjuntos de dados?
 
 Sim, mas para conjuntos de dados muito grandes é recomendável:
 - Desativar a geração de features (`generate_features=False`)
@@ -454,124 +458,21 @@ Os resultados da validação incluem:
 
 Use esses valores para entender o impacto das transformações na performance do modelo.
 
-### É possível customizar o CAFE (Component Automated Feature Engineer) para tarefas específicas?
+### É possível customizar o CAFE para tarefas específicas?
 
-Sim, o CAFE (Component Automated Feature Engineer) é altamente configurável. Você pode:
-- Ajustar as estratégias de pré-processamento para diferentes tipos de dados
-- Configurar diferentes métodos de engenharia de features
-- Definir seus próprios critérios de validação
-- Estender as classes com métodos customizados para necessidades específicas
+Sim, o CAFE é altamente configurável. Você pode ajustar as estratégias de pré-processamento para diferentes tipos de dados, configurar diferentes métodos de engenharia de features, definir seus próprios critérios de validação e estender as classes com métodos customizados para necessidades específicas.
 
-Vou completar o exemplo de código para o CAFE (Component Automated Feature Engineer), continuando de onde paramos:
+## Licença
 
-Agora vou concluir a documentação do CAFE (Component Automated Feature Engineer) com algumas seções adicionais.
+Este projeto está licenciado sob a Licença MIT - veja o arquivo [LICENSE](LICENSE) para detalhes.
 
-## Benchmarks e Resultados
+## Contribuindo
 
-O CAFE (Component Automated Feature Engineer) foi testado em diversos tipos de datasets e demonstrou melhorias significativas em diferentes cenários. Abaixo estão alguns resultados de benchmarks:
+Contribuições são bem-vindas! Por favor, sinta-se à vontade para enviar um Pull Request.
 
-### Classificação em Datasets Simples vs. Complexos
+## Autores
 
-O sistema foi avaliado em 8 tipos diferentes de datasets, desde classificação simples (como Iris) até datasets complexos com alta dimensionalidade e ruído:
-
-| Dataset | Tipo | Melhoria de Performance | Redução de Features |
-|---------|------|-------------------------|---------------------|
-| Iris | Classificação simples | +2.1% | -10.2% |
-| Wine | Classificação média | +3.4% | -15.3% |
-| Breast Cancer | Classificação complexa | +4.2% | -40.6% |
-| Diabetes | Regressão simples | +2.8% | -8.4% |
-| High Dim Classification | Classificação de alta dimensão | +6.7% | -65.2% |
-| High Dim Regression | Regressão de alta dimensão | +5.3% | -52.8% |
-| Complex Timeseries | Temporal com múltiplos tipos | +7.2% | +12.4% |
-| Noisy Data | Dados com ruído e valores ausentes | +9.1% | -38.2% |
-
-### Eficácia do Sistema de Validação
-
-O sistema de validação automática foi particularmente eficaz, prevenindo perdas de performance em cerca de 25% dos casos onde o processamento poderia ter prejudicado a qualidade do modelo.
-
-### Tempo de Processamento
-
-O CAFE (Component Automated Feature Engineer) foi otimizado para equilibrar performance com tempo de processamento:
-
-| Tamanho do Dataset | Tempo de Processamento | Speedup vs. Grid Search |
-|--------------------|------------------------|-----------------------|
-| Pequeno (<1k amostras) | 2-5 segundos | 15x |
-| Médio (1k-10k amostras) | 10-30 segundos | 25x |
-| Grande (10k-100k amostras) | 1-5 minutos | 40x |
-| Muito grande (>100k amostras) | 5-15 minutos | 80x |
-
-## Limitações Conhecidas
-
-Embora o CAFE (Component Automated Feature Engineer) seja uma ferramenta poderosa para automatizar o processamento de dados e a engenharia de features, existem algumas limitações conhecidas:
-
-1. **Expansão de Dimensionalidade**: Em alguns casos, o FeatureEngineer pode gerar um grande número de features, aumentando a dimensionalidade dos dados. Isso pode levar a problemas de overfitting e maior tempo de treinamento dos modelos.
-
-2. **Escalabilidade**: Para datasets extremamente grandes (milhões de linhas), o processamento pode se tornar computacionalmente intensivo, especialmente quando a geração de features está ativada.
-
-3. **Tipos de Dados Especializados**: O sistema não lida nativamente com tipos de dados especializados como texto não estruturado, imagens ou áudio, embora possa ser estendido para suportar esses tipos.
-
-4. **Explicabilidade**: Algumas transformações automáticas podem tornar as features menos interpretáveis, dificultando a explicação dos modelos resultantes.
-
-## Trabalhos Futuros
-
-O desenvolvimento do CAFE (Component Automated Feature Engineer) continuará com as seguintes melhorias planejadas:
-
-### 1. Melhorias no Módulo de Pré-Processamento (PreProcessor)
-**Problemas Identificados:**
-- O método de remoção de outliers usa `Z-Score`, `IQR` e `Isolation Forest`, mas pode ser muito restritivo em alguns casos.
-- Falta um mecanismo de **reporte de outliers** antes da remoção, para permitir uma análise mais detalhada.
-- A estratégia de preenchimento de valores ausentes (`missing_values_strategy`) poderia incluir métodos mais avançados, como **Interpolação Temporal** e **Modelos Preditivos**.
-
-**Sugestões de Melhorias:**
-- Adicionar um **modo de análise exploratória de outliers** antes da remoção, permitindo ao usuário visualizar os dados problemáticos antes da exclusão.
-- Implementar **métodos mais sofisticados para imputação de valores ausentes**, como:
-  - Modelos de regressão para estimar valores ausentes.
-  - Uso de séries temporais para interpolação (exemplo: `pandas.DataFrame.interpolate()`).
-- Incluir **um parâmetro configurável para limitar a remoção de outliers** (exemplo: definir um percentual máximo de amostras a serem excluídas).
-
----
-
-### 2. Melhorias no Módulo de Engenharia de Features (FeatureEngineer)
-**Problemas Identificados:**
-- A geração de features polinomiais (`generate_features`) pode gerar um número excessivo de novas features, levando à **explosão combinatória**.
-- O método de redução de dimensionalidade `PCA` não avalia se há **correlação negativa** com o target, podendo perder variáveis importantes.
-- O módulo não possui suporte a **interação de variáveis categóricas** além de One-Hot Encoding.
-
-**Sugestões de Melhorias:**
-- Implementar **filtragem automática de features polinomiais redundantes**, usando critérios de importância como:
-  - Seleção de features via **mutual information** ou **SHAP values**.
-  - Filtragem de variáveis com baixa variância.
-- Criar um **método automático para testar diferentes técnicas de redução de dimensionalidade**, como:
-  - Seleção automática de componentes via `PCA` e `UMAP`.
-- Implementar **interações entre variáveis categóricas**, como:
-  - Agrupamento de categorias raras.
-  - Interações entre categorias via métodos como `Target Encoding`.
-
----
-
-### 3. Melhorias no Módulo de Validação de Performance (PerformanceValidator)
-**Problemas Identificados:**
-- A escolha do melhor conjunto de features é baseada apenas na **acurácia/f1-score**, sem levar em conta a **explicabilidade do modelo**.
-- A validação cruzada não verifica **overfitting** nos dados transformados.
-
-**Sugestões de Melhorias:**
-- Incluir **métricas adicionais** além da acurácia:
-  - Avaliação de **feature importance** para garantir interpretabilidade.
-  - Teste de estabilidade: verificar se os modelos treinados são robustos a pequenas variações nos dados.
-- Implementar **avaliação de overfitting** no pipeline:
-  - Comparar desempenho em treino e validação para detectar ajustes excessivos.
-
----
-
-### 4. Melhorias no Pipeline de Dados (DataPipeline)
-**Problemas Identificados:**
-- O pipeline não permite **retreinamento incremental** com novos dados sem refazer todo o processo.
-
-**Sugestões de Melhorias:**
-- Criar um **mecanismo de ajuste fino para decisão sobre qual versão dos dados usar**:
-- Permitir ao usuário escolher pesos diferentes para acurácia, interpretabilidade e número de features.
-
----
+- CAFE Team
 
 ## Conclusão
 
@@ -585,3 +486,8 @@ O CAFE (Component Automated Feature Engineer) é um sistema avançado de process
 O sistema é particularmente útil para cientistas de dados e engenheiros de machine learning que buscam automatizar e otimizar o processo de preparação de dados, permitindo que se concentrem em aspectos mais estratégicos do desenvolvimento de modelos e interpretação de resultados.
 
 Com a combinação de pré-processamento automatizado, engenharia de features inteligente e validação de performance, o CAFE (Component Automated Feature Engineer) representa um avanço significativo na direção da democratização do machine learning e da automação de processos de dados.
+
+## Agradecimentos
+
+- [Scikit-learn](https://scikit-learn.org/stable/): Biblioteca base usada para implementação dos algoritmos de ML
+- [Pandas](https://pandas.pydata.org/docs/): Biblioteca para manipulação de dados usada extensivamente pelo CAFE
