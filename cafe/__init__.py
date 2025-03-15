@@ -12,7 +12,7 @@ from .feature_engineer import FeatureEngineer, create_feature_engineer
 from .performance_validator import PerformanceValidator
 from .data_pipeline import DataPipeline, create_data_pipeline
 from .explorer import Explorer, TransformationTree, HeuristicSearch
-from .report_datapipeline import ReportDataPipeline
+from .report_datapipeline2 import ReportDataPipeline
 from .report_visualizer import ReportVisualizer
 
 __all__ = [

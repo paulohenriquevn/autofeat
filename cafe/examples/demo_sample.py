@@ -213,11 +213,6 @@ def integrated_demo():
             plt.savefig("correlation_matrix.png")
             print("   Visualização salva em: correlation_matrix.png")
     
-    # 6. Gerar e salvar relatório completo
-    print("\n6. Gerando relatório completo...")
-    report = reporter.generate_report(output_file="cafe_report.txt")
-    print(f"   Relatório completo salvo em: cafe_report.txt")
-    
     # 7. Demonstração de fluxo de trabalho independente
     print("\n7. Demonstração de fluxo independente (apenas análise sem pipeline)")
     print("\n   7.1 Análise sem pipeline CAFE...")

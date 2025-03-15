@@ -1,88 +1,76 @@
 import pandas as pd
-import numpy as np
 import logging
-from typing import Dict, Optional, List, Any, Union
-import matplotlib.pyplot as plt
-import seaborn as sns
-from io import StringIO
+from typing import Dict
+
 
 class ReportDataPipeline:
-    def __init__(self, df: pd.DataFrame, target_col: str="", preprocessor=None, feature_engineer=None, validator=None):
+    def __init__(self, df: pd.DataFrame, target_col: str="", preprocessor=None, 
+                feature_engineer=None, validator=None, 
+                max_sample_size: int=10000, sampling_threshold: int=50000):
+        """
+        Versão aprimorada do ReportDataPipeline com melhor performance para datasets grandes.
+        
+        Args:
+            df: DataFrame com os dados
+            target_col: Nome da coluna alvo
+            preprocessor: Instância do preprocessador (opcional)
+            feature_engineer: Instância do feature engineer (opcional)
+            validator: Instância do validator (opcional)
+            max_sample_size: Tamanho máximo da amostra para análise
+            sampling_threshold: Limiar para usar amostragem automática
+        """
         self.df = df
         self.target_col = target_col
         self.preprocessor = preprocessor
         self.feature_engineer = feature_engineer
         self.validator = validator
         
-        self.logger = logging.getLogger("CAFE.ReportDataPipeline")
+        # Parâmetros para controle de performance
+        self.max_sample_size = max_sample_size
+        self.sampling_threshold = sampling_threshold
+        self.use_sampling = len(df) > sampling_threshold
+        
+        # Inicializa o logger
+        self.logger = logging.getLogger("CAFE.ImprovedReportDataPipeline")
         if not self.logger.handlers:
             handler = logging.StreamHandler()
             formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
             handler.setFormatter(formatter)
             self.logger.addHandler(handler)
         self.logger.setLevel(logging.INFO)
-
-    def get_validation_results(self) -> Dict:
+        
+        if self.use_sampling:
+            self.logger.info(f"Dataset grande detectado ({len(df)} amostras). Usando amostragem automática.")
+    
+    def _get_sample_df(self) -> pd.DataFrame:
         """
-        Retorna os resultados da validação de performance.
+        Retorna uma amostra do DataFrame se necessário.
         
         Returns:
-            Dicionário com os resultados da validação ou resultados simulados se não disponível
+            DataFrame original ou amostra se o DataFrame for grande
         """
-        if self.validator and hasattr(self.validator, 'performance_original') and self.validator.performance_original is not None:
-            # Se temos um validator com resultados disponíveis
-            results = {
-                'performance_original': self.validator.performance_original,
-                'performance_transformed': self.validator.performance_transformed,
-                'performance_diff': self.validator.performance_transformed - self.validator.performance_original,
-                'performance_diff_pct': ((self.validator.performance_transformed - self.validator.performance_original) / 
-                                        max(abs(self.validator.performance_original), 1e-10)) * 100,
-                'best_choice': self.validator.best_choice or 'original',
-                'feature_reduction': 0.0  # Placeholder, será atualizado se possível
-            }
+        if not self.use_sampling:
+            return self.df
             
-            # Adicionar scores por fold se disponíveis
-            if hasattr(self.validator, 'scores_original') and hasattr(self.validator, 'scores_transformed'):
-                results['scores_original'] = self.validator.scores_original
-                results['scores_transformed'] = self.validator.scores_transformed
-            
-            # Estimar redução de features se possível
-            if self.feature_engineer and hasattr(self.feature_engineer, 'input_feature_names') and hasattr(self.feature_engineer, 'output_feature_names'):
-                input_count = len(self.feature_engineer.input_feature_names)
-                output_count = len(self.feature_engineer.output_feature_names)
-                results['feature_reduction'] = 1 - (output_count / input_count) if input_count > 0 else 0.0
-                results['original_n_features'] = input_count
-            
-            return results
-        
-        else:
-            # Se não temos um validator, retornar resultados simulados/placeholder
-            self.logger.warning("Validador não disponível. Retornando resultados simulados.")
-            
-            # Contar colunas como estimativa de features
-            if self.df is not None:
-                num_features = len(self.df.columns) - (1 if self.target_col in self.df.columns else 0)
-            else:
-                num_features = 0
+        # Usar amostra estratificada se tiver target categórico
+        if self.target_col and self.target_col in self.df.columns and pd.api.types.is_categorical_dtype(self.df[self.target_col].dtype):
+            try:
+                return self.df.groupby(self.target_col, group_keys=False).apply(
+                    lambda x: x.sample(min(len(x), self.max_sample_size // len(self.df[self.target_col].unique())))
+                )
+            except Exception as e:
+                self.logger.warning(f"Erro ao usar amostragem estratificada: {e}. Usando amostragem aleatória.")
                 
-            return {
-                'performance_original': 0.75,  # Valor placeholder
-                'performance_transformed': 0.78,  # Valor placeholder
-                'performance_diff': 0.03,
-                'performance_diff_pct': 4.0,
-                'best_choice': 'transformed',
-                'feature_reduction': 0.2,  # 20% de redução como placeholder
-                'scores_original': [0.74, 0.75, 0.76, 0.74, 0.76],  # Valores placeholder
-                'scores_transformed': [0.77, 0.78, 0.79, 0.77, 0.79],  # Valores placeholder
-                'original_n_features': num_features
-            }
+        # Amostragem aleatória
+        sample_size = min(self.max_sample_size, len(self.df))
+        return self.df.sample(n=sample_size, random_state=42)
     
     def get_feature_importance(self) -> pd.DataFrame:
         """
-        Calcula e retorna a importância das features para a variável alvo.
+        Calcula importância das features usando métodos eficientes para datasets grandes.
         
         Returns:
-            DataFrame com a importância das features
+            DataFrame com importância das features
         """
         if self.target_col is None or not self.target_col:
             self.logger.error("É necessário fornecer a coluna alvo para calcular a importância das features")
@@ -92,45 +80,63 @@ class ReportDataPipeline:
             self.logger.error(f"Coluna alvo '{self.target_col}' não encontrada no DataFrame")
             return pd.DataFrame(columns=['feature', 'importance', 'normalized_importance', 'categoria'])
         
-        # Obter importância usando o validador
+        # Usar amostra para datasets grandes
+        df_to_use = self._get_sample_df()
+        
         try:
             # Separar features e target
-            X = self.df.drop(columns=[self.target_col])
-            y = self.df[self.target_col]
+            X = df_to_use.drop(columns=[self.target_col])
+            y = df_to_use[self.target_col]
             
             # Se temos um validator disponível, usar seu método
             if self.validator and hasattr(self.validator, 'get_feature_importance'):
                 importance = self.validator.get_feature_importance(X, y)
             else:
-                # Caso contrário, implementar o cálculo aqui
-                from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-                
-                # Detectar tipo de problema (classificação ou regressão)
+                # Detectar tipo de problema
                 task = 'classification'
                 if pd.api.types.is_numeric_dtype(y.dtype) and y.nunique() > 10:
                     task = 'regression'
                 
-                # Criar modelo apropriado
-                if task == 'classification':
-                    model = RandomForestClassifier(n_estimators=100, random_state=42)
-                else:
-                    model = RandomForestRegressor(n_estimators=100, random_state=42)
-                
-                # Tratar dados categóricos se necessário
+                # Tratar dados categóricos
                 X_processed = X.copy()
                 cat_cols = X_processed.select_dtypes(include=['object', 'category']).columns
                 if len(cat_cols) > 0:
                     self.logger.info(f"Detectadas {len(cat_cols)} colunas categóricas.")
                     X_processed = pd.get_dummies(X_processed, columns=cat_cols, drop_first=True)
                 
-                # Treinar modelo
-                model.fit(X_processed, y)
-                
-                # Criar DataFrame com importâncias
-                importance = pd.DataFrame({
-                    'feature': X_processed.columns,
-                    'importance': model.feature_importances_
-                }).sort_values('importance', ascending=False)
+                # Para datasets grandes, usar métodos mais leves
+                if self.use_sampling or len(X) > 10000:
+                    # Usar métodos baseados em correlação/informação mútua
+                    if task == 'classification':
+                        from sklearn.feature_selection import mutual_info_classif
+                        importances = mutual_info_classif(X_processed, y)
+                    else:
+                        from sklearn.feature_selection import mutual_info_regression
+                        importances = mutual_info_regression(X_processed, y)
+                        
+                    # Criar DataFrame com importâncias
+                    importance = pd.DataFrame({
+                        'feature': X_processed.columns,
+                        'importance': importances
+                    }).sort_values('importance', ascending=False)
+                else:
+                    # Para datasets menores, usar Random Forest (mais preciso)
+                    from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+                    
+                    # Criar modelo apropriado
+                    if task == 'classification':
+                        model = RandomForestClassifier(n_estimators=100, random_state=42)
+                    else:
+                        model = RandomForestRegressor(n_estimators=100, random_state=42)
+                    
+                    # Treinar modelo
+                    model.fit(X_processed, y)
+                    
+                    # Criar DataFrame com importâncias
+                    importance = pd.DataFrame({
+                        'feature': X_processed.columns,
+                        'importance': model.feature_importances_
+                    }).sort_values('importance', ascending=False)
             
             # Adicionar importância normalizada (porcentagem)
             importance['normalized_importance'] = (importance['importance'] / importance['importance'].sum() * 100).round(2)
@@ -157,7 +163,7 @@ class ReportDataPipeline:
     
     def get_missing_values(self) -> pd.DataFrame:
         """
-        Gera um relatório sobre valores ausentes no DataFrame.
+        Gera relatório sobre valores ausentes usando métodos eficientes.
         
         Returns:
             DataFrame com estatísticas e recomendações sobre valores ausentes
@@ -165,8 +171,23 @@ class ReportDataPipeline:
         if self.df.empty:
             return pd.DataFrame(columns=['coluna', 'valores_ausentes', 'porcentagem', 'recomendacao'])
         
-        missing_count = self.df.isnull().sum()
-        missing_percent = (missing_count / len(self.df)) * 100
+        # Para datasets grandes, calcular valores ausentes em lotes
+        if self.use_sampling and len(self.df) > 1000000:  # Para datasets realmente grandes
+            # Calcular valores ausentes em lotes para economizar memória
+            batch_size = 100000
+            missing_count = pd.Series(0, index=self.df.columns)
+            total_rows = len(self.df)
+            
+            for start_idx in range(0, total_rows, batch_size):
+                end_idx = min(start_idx + batch_size, total_rows)
+                batch = self.df.iloc[start_idx:end_idx]
+                missing_count = missing_count.add(batch.isnull().sum(), fill_value=0)
+                
+            missing_percent = (missing_count / total_rows) * 100
+        else:
+            # Cálculo padrão para datasets menores
+            missing_count = self.df.isnull().sum()
+            missing_percent = (missing_count / len(self.df)) * 100
         
         report = pd.DataFrame({
             'coluna': missing_count.index,
@@ -189,7 +210,9 @@ class ReportDataPipeline:
                 return "Sem valores ausentes"
             
             if col in self.df.columns:
-                dtype = self.df[col].dtype
+                # Detectar tipo da coluna mais eficientemente
+                sample_col = self.df[col].head(1000)  # Usar apenas uma amostra
+                dtype = sample_col.dtype
                 is_numeric = pd.api.types.is_numeric_dtype(dtype)
                 is_categorical = pd.api.types.is_categorical_dtype(dtype) or pd.api.types.is_object_dtype(dtype)
                 
@@ -208,6 +231,7 @@ class ReportDataPipeline:
             
             return f"Imputação usando {strategy} (configurado)."
         
+        # Aplicar a função get_recommendation para cada linha (mais eficiente com apply)
         report['recomendacao'] = report.apply(get_recommendation, axis=1)
         
         report_with_missing = report[report['valores_ausentes'] > 0]
@@ -219,7 +243,7 @@ class ReportDataPipeline:
     
     def get_outliers(self) -> pd.DataFrame:
         """
-        Gera um relatório sobre outliers no DataFrame.
+        Gera relatório sobre outliers usando métodos otimizados para datasets grandes.
         
         Returns:
             DataFrame com estatísticas e recomendações sobre outliers
@@ -228,8 +252,8 @@ class ReportDataPipeline:
             return pd.DataFrame(columns=['coluna', 'num_outliers', 'porcentagem', 'limite_inferior', 'limite_superior', 'recomendacao'])
         
         # Selecionar apenas colunas numéricas
-        numeric_df = self.df.select_dtypes(include=['number'])
-        if numeric_df.empty:
+        numeric_cols = self.df.select_dtypes(include=['number']).columns
+        if len(numeric_cols) == 0:
             self.logger.warning("Não foram encontradas colunas numéricas para análise de outliers.")
             return pd.DataFrame(columns=['coluna', 'num_outliers', 'porcentagem', 'limite_inferior', 'limite_superior', 'recomendacao'])
         
@@ -238,41 +262,58 @@ class ReportDataPipeline:
         if self.preprocessor and hasattr(self.preprocessor, 'config'):
             outlier_method = self.preprocessor.config.get('outlier_method', 'iqr')
         
+        # Usar amostra para datasets grandes
+        df_to_use = self._get_sample_df()
+        
         # Preparar resultados
         results = []
         
-        for col in numeric_df.columns:
-            series = self.df[col].dropna()
+        for col in numeric_cols:
+            # Processar uma coluna por vez para evitar sobrecarga de memória
+            series = df_to_use[col].dropna()
             
             # Ignorar colunas binárias (0/1) ou com poucos valores únicos
             if series.nunique() <= 2 or (series.nunique() / len(series) < 0.01 and series.nunique() <= 10):
                 continue
                 
-            # Detectar outliers com base no método configurado
+            # Detectar outliers com método escolhido, otimizado para datasets grandes
             if outlier_method == 'zscore':
-                from scipy import stats
-                z_scores = np.abs(stats.zscore(series, nan_policy='omit'))
-                outliers = series[z_scores > 3]
-                lower_bound = series.mean() - 3 * series.std()
-                upper_bound = series.mean() + 3 * series.std()
-            elif outlier_method == 'iqr':
-                q1 = series.quantile(0.25)
-                q3 = series.quantile(0.75)
-                iqr = q3 - q1
-                lower_bound = q1 - 1.5 * iqr
-                upper_bound = q3 + 1.5 * iqr
-                outliers = series[(series < lower_bound) | (series > upper_bound)]
-            else:  # isolation_forest ou outro método
-                # Usar IQR como fallback
-                q1 = series.quantile(0.25)
-                q3 = series.quantile(0.75)
-                iqr = q3 - q1
-                lower_bound = q1 - 1.5 * iqr
-                upper_bound = q3 + 1.5 * iqr
-                outliers = series[(series < lower_bound) | (series > upper_bound)]
+                # Calcular Z-score sem armazenar toda a série em memória
+                mean_val = series.mean()
+                std_val = series.std()
+                
+                # Calcular limites
+                lower_bound = mean_val - 3 * std_val
+                upper_bound = mean_val + 3 * std_val
+                
+                # Contar outliers sem criar array intermediário grande
+                outlier_count = ((series < lower_bound) | (series > upper_bound)).sum()
             
-            # Calcular estatísticas
-            outlier_count = len(outliers)
+            elif outlier_method == 'iqr':
+                # Cálculo de quartis (mais eficiente)
+                q1 = series.quantile(0.25)
+                q3 = series.quantile(0.75)
+                iqr = q3 - q1
+                
+                # Definir limites
+                lower_bound = q1 - 1.5 * iqr
+                upper_bound = q3 + 1.5 * iqr
+                
+                # Contar outliers sem criar array intermediário grande
+                outlier_count = ((series < lower_bound) | (series > upper_bound)).sum()
+            
+            else:  # Método fallback
+                # Usar IQR como método padrão
+                q1 = series.quantile(0.25)
+                q3 = series.quantile(0.75)
+                iqr = q3 - q1
+                
+                lower_bound = q1 - 1.5 * iqr
+                upper_bound = q3 + 1.5 * iqr
+                
+                outlier_count = ((series < lower_bound) | (series > upper_bound)).sum()
+            
+            # Calcular percentual
             outlier_percent = (outlier_count / len(series)) * 100
             
             # Gerar recomendação
@@ -307,237 +348,132 @@ class ReportDataPipeline:
         return outliers_report
     
     def get_transformations(self) -> Dict:
-        """
-        Gera um relatório das transformações aplicadas.
-        
-        Returns:
-            Dicionário com informações sobre as transformações
-        """
-        # Obter informações sobre transformações do preprocessador
-        preprocessor_transformations = {"status": "Não disponível"}
-        if self.preprocessor and hasattr(self.preprocessor, 'get_transformer_description'):
-            try:
-                preprocessor_transformations = self.preprocessor.get_transformer_description()
-            except Exception as e:
-                preprocessor_transformations = {"error": f"Erro ao obter descrição do preprocessador: {e}"}
-        
-        # Informações sobre feature engineering
-        feature_engineering_info = {}
-        if self.feature_engineer and hasattr(self.feature_engineer, 'config'):
-            feature_engineering_info = self.feature_engineer.config.copy()
-        
-        # Resultados da validação
-        validation_results = self.get_validation_results() or {}
-        
-        # Estatísticas de transformação
-        transformation_stats = {
-            "dimensoes_originais": None,
-            "dimensoes_transformadas": None,
-            "reducao_features": None,
-            "reducao_features_pct": None,
-            "ganho_performance": None,
-            "ganho_performance_pct": None,
-            "decisao_final": None
+        results = {
+            'performance_original': self.validator.performance_original,
+            'performance_transformed': self.validator.performance_transformed,
+            'performance_diff': self.validator.performance_transformed - self.validator.performance_original,
+            'performance_diff_pct': ((self.validator.performance_transformed - self.validator.performance_original) / 
+                                    max(abs(self.validator.performance_original), 1e-10)) * 100,
+            'best_choice': self.validator.best_choice or 'original',
+            'feature_reduction': 0.0  # Placeholder, será atualizado se possível
         }
         
-        if validation_results:
-            # Tentar recuperar número de features original
-            num_original_features = 0
-            if self.feature_engineer and hasattr(self.feature_engineer, 'input_feature_names'):
-                num_original_features = len(self.feature_engineer.input_feature_names)
-            
-            # Se isso não funcionar, tentar outras fontes
-            if num_original_features == 0:
-                num_original_features = validation_results.get('original_n_features', 0)
-                
-            # Se ainda zero, usar o número de colunas do DataFrame atual menos o target
-            if num_original_features == 0 and self.df is not None:
-                num_original_features = len(self.df.columns) - (1 if self.target_col in self.df.columns else 0)
-                
-            # Calcular o número de features transformadas
-            feature_reduction = validation_results.get('feature_reduction', 0.0)
-            transformed_features = int(num_original_features * (1 - feature_reduction))
-            
-            transformation_stats.update({
-                "dimensoes_originais": (len(self.df) if self.df is not None else 0, num_original_features),
-                "dimensoes_transformadas": (len(self.df) if self.df is not None else 0, transformed_features),
-                "reducao_features": num_original_features - transformed_features,
-                "reducao_features_pct": round(feature_reduction * 100, 2),
-                "ganho_performance": round(validation_results.get('performance_diff', 0.0), 4),
-                "ganho_performance_pct": round(validation_results.get('performance_diff_pct', 0.0), 2),
-                "decisao_final": validation_results.get('best_choice', 'original').upper()
-            })
+        # Adicionar scores por fold se disponíveis
+        if hasattr(self.validator, 'scores_original') and hasattr(self.validator, 'scores_transformed'):
+            results['scores_original'] = self.validator.scores_original
+            results['scores_transformed'] = self.validator.scores_transformed
         
-        # Juntar todas as informações no relatório
-        report = {
-            "preprocessamento": preprocessor_transformations,
-            "engenharia_features": feature_engineering_info,
-            "estatisticas": transformation_stats,
-            "validacao": validation_results
+        # Estimar redução de features se possível
+        if self.feature_engineer and hasattr(self.feature_engineer, 'input_feature_names') and hasattr(self.feature_engineer, 'output_feature_names'):
+            input_count = len(self.feature_engineer.input_feature_names)
+            output_count = len(self.feature_engineer.output_feature_names)
+            results['feature_reduction'] = 1 - (output_count / input_count) if input_count > 0 else 0.0
+            results['original_n_features'] = input_count
+        
+        return results
+    
+    def get_report_summary(self) -> Dict:
+        """
+        Gera um resumo conciso das principais métricas e recomendações.
+        
+        Returns:
+            Dicionário com resumo das análises e recomendações
+        """
+        summary = {
+            'dados': {
+                'amostras': len(self.df) if self.df is not None else 0,
+                'features': len(self.df.columns) - (1 if self.target_col in self.df.columns else 0) if self.df is not None else 0,
+                'tipos_colunas': {
+                    'numericas': len(self.df.select_dtypes(include=['number']).columns) if self.df is not None else 0,
+                    'categoricas': len(self.df.select_dtypes(include=['object', 'category']).columns) if self.df is not None else 0,
+                    'temporais': len(self.df.select_dtypes(include=['datetime']).columns) if self.df is not None else 0
+                }
+            },
+            'valores_ausentes': {
+                'colunas_com_ausentes': 0,
+                'porcentagem_media': 0.0,
+                'recomendacao': "Sem valores ausentes"
+            },
+            'outliers': {
+                'colunas_com_outliers': 0,
+                'porcentagem_media': 0.0,
+                'recomendacao': "Sem outliers significativos"
+            },
+            'transformacoes': {
+                'features_originais': 0,
+                'features_transformadas': 0,
+                'reducao_features_pct': 0.0,
+                'ganho_performance_pct': 0.0,
+                'recomendacao': "Nenhuma transformação aplicada"
+            }
         }
         
-        return report
-
-    def generate_report(self, include_visualizations: bool = False, output_file: Optional[str] = None) -> str:
-        """
-        Gera um relatório completo com todas as análises.
+        # Obter informações de valores ausentes
+        try:
+            missing_report = self.get_missing_values()
+            if not missing_report.empty:
+                summary['valores_ausentes']['colunas_com_ausentes'] = len(missing_report)
+                summary['valores_ausentes']['porcentagem_media'] = missing_report['porcentagem'].mean()
+                
+                # Gerar recomendação geral para valores ausentes
+                if summary['valores_ausentes']['porcentagem_media'] > 20:
+                    summary['valores_ausentes']['recomendacao'] = "Alta presença de valores ausentes. Considere técnicas avançadas de imputação ou remoção de colunas."
+                elif summary['valores_ausentes']['porcentagem_media'] > 5:
+                    summary['valores_ausentes']['recomendacao'] = "Presença moderada de valores ausentes. Recomendado usar métodos como median/mean/KNN."
+                else:
+                    summary['valores_ausentes']['recomendacao'] = "Baixa presença de valores ausentes. Métodos básicos de imputação são suficientes."
+        except Exception as e:
+            self.logger.warning(f"Erro ao obter resumo de valores ausentes: {e}")
         
-        Args:
-            include_visualizations: Se True, inclui caminhos para visualizações salvas
-            output_file: Caminho para salvar o relatório em formato de texto
+        # Obter informações de outliers
+        try:
+            outliers_report = self.get_outliers()
+            if not outliers_report.empty:
+                summary['outliers']['colunas_com_outliers'] = len(outliers_report)
+                summary['outliers']['porcentagem_media'] = outliers_report['porcentagem'].mean()
+                
+                # Gerar recomendação geral para outliers
+                if summary['outliers']['porcentagem_media'] > 10:
+                    summary['outliers']['recomendacao'] = "Alta presença de outliers. Considere transformações robustas ou remoção seletiva."
+                elif summary['outliers']['porcentagem_media'] > 5:
+                    summary['outliers']['recomendacao'] = "Presença moderada de outliers. Recomendado usar RobustScaler ou métodos de winsorização."
+                else:
+                    summary['outliers']['recomendacao'] = "Baixa presença de outliers. Considere usar métodos padrão de tratamento."
+        except Exception as e:
+            self.logger.warning(f"Erro ao obter resumo de outliers: {e}")
+        
+        # Obter informações de transformações
+        try:
+            transformations = self.get_transformations()
+            stats = transformations.get('estatisticas', {})
             
-        Returns:
-            String com o relatório completo
-        """
-        # Inicializar buffer para o relatório
-        report_buffer = StringIO()
-        report_buffer.write("=" * 80 + "\n")
-        report_buffer.write(" RELATÓRIO DE ANÁLISE CAFE (Component Automated Feature Engineer) ".center(80) + "\n")
-        report_buffer.write("=" * 80 + "\n\n")
+            if stats and stats['dimensoes_originais'] is not None:
+                summary['transformacoes']['features_originais'] = stats['dimensoes_originais'][1]
+                summary['transformacoes']['features_transformadas'] = stats['dimensoes_transformadas'][1]
+                summary['transformacoes']['reducao_features_pct'] = stats['reducao_features_pct']
+                summary['transformacoes']['ganho_performance_pct'] = stats['ganho_performance_pct']
+                
+                # Gerar recomendação geral para transformações
+                if stats['decisao_final'] == 'TRANSFORMED':
+                    if stats['ganho_performance_pct'] > 5:
+                        summary['transformacoes']['recomendacao'] = "Transformações melhoraram significativamente a performance. Recomendado usar o dataset transformado."
+                    else:
+                        summary['transformacoes']['recomendacao'] = "Transformações trouxeram ganhos moderados. Recomendado usar o dataset transformado para maior eficiência."
+                else:
+                    summary['transformacoes']['recomendacao'] = "Transformações não melhoraram a performance. Recomendado manter o dataset original."
+        except Exception as e:
+            self.logger.warning(f"Erro ao obter resumo de transformações: {e}")
         
-        # Informações gerais
-        report_buffer.write("INFORMAÇÕES GERAIS\n")
-        report_buffer.write("-" * 80 + "\n")
-        report_buffer.write(f"Dimensões do dataset: {self.df.shape[0]} amostras x {self.df.shape[1]} colunas\n")
-        report_buffer.write(f"Variável alvo: {self.target_col if self.target_col else 'Não especificada'}\n\n")
-        
-        # Informações sobre valores ausentes
-        report_buffer.write("ANÁLISE DE VALORES AUSENTES\n")
-        report_buffer.write("-" * 80 + "\n")
-        missing_report = self.get_missing_values()
-        if missing_report.empty:
-            report_buffer.write("Não foram encontrados valores ausentes no dataset.\n\n")
-        else:
-            report_buffer.write(f"Total de colunas com valores ausentes: {len(missing_report)}\n\n")
-            report_buffer.write(missing_report.to_string(index=False) + "\n\n")
-            
-            if include_visualizations:
-                fig = self.visualize_missing_values()
-                if fig:
-                    missing_viz_path = "missing_values_vizualization.png" if not output_file else f"{output_file.rsplit('.', 1)[0]}_missing.png"
-                    fig.savefig(missing_viz_path)
-                    report_buffer.write(f"Visualização salva em: {missing_viz_path}\n\n")
-        
-        # Informações sobre outliers
-        report_buffer.write("ANÁLISE DE OUTLIERS\n")
-        report_buffer.write("-" * 80 + "\n")
-        outliers_report = self.get_outliers()
-        if outliers_report.empty:
-            report_buffer.write("Não foram detectados outliers significativos no dataset.\n\n")
-        else:
-            report_buffer.write(f"Total de colunas com outliers: {len(outliers_report)}\n\n")
-            # Reduzir colunas para melhor formatação no relatório
-            compact_report = outliers_report[['coluna', 'num_outliers', 'porcentagem', 'limite_inferior', 'limite_superior', 'recomendacao']]
-            report_buffer.write(compact_report.to_string(index=False) + "\n\n")
-            
-            if include_visualizations:
-                fig = self.visualize_outliers()
-                if fig:
-                    outliers_viz_path = "outliers_vizualization.png" if not output_file else f"{output_file.rsplit('.', 1)[0]}_outliers.png"
-                    fig.savefig(outliers_viz_path)
-                    report_buffer.write(f"Visualização salva em: {outliers_viz_path}\n\n")
-        
-        # Informações sobre importância de features
-        if self.target_col:
-            report_buffer.write("ANÁLISE DE IMPORTÂNCIA DE FEATURES\n")
-            report_buffer.write("-" * 80 + "\n")
+        # Obter importância de features (top 5)
+        try:
             importance_report = self.get_feature_importance()
-            if importance_report.empty:
-                report_buffer.write("Não foi possível calcular a importância das features.\n\n")
-            else:
-                report_buffer.write(f"Total de features analisadas: {len(importance_report)}\n\n")
-                # Exibir top 15 features mais importantes
-                top_features = importance_report.head(15)
-                report_buffer.write(top_features.to_string(index=False) + "\n\n")
-                
-                if include_visualizations:
-                    fig = self.visualize_feature_importance()
-                    if fig:
-                        importance_viz_path = "feature_importance_vizualization.png" if not output_file else f"{output_file.rsplit('.', 1)[0]}_importance.png"
-                        fig.savefig(importance_viz_path)
-                        report_buffer.write(f"Visualização salva em: {importance_viz_path}\n\n")
+            if not importance_report.empty:
+                top_features = importance_report.head(5)['feature'].tolist()
+                summary['features_importantes'] = {
+                    'top_5': top_features,
+                    'categorias': importance_report.head(5)['categoria'].tolist()
+                }
+        except Exception as e:
+            self.logger.warning(f"Erro ao obter resumo de importância de features: {e}")
         
-        # Informações sobre transformações (se pipeline ajustado)
-        report_buffer.write("ANÁLISE DE TRANSFORMAÇÕES APLICADAS\n")
-        report_buffer.write("-" * 80 + "\n")
-        transformations_report = self.get_transformations()
-        
-        # Preprocessamento
-        preproc_info = transformations_report.get('preprocessamento', {})
-        report_buffer.write("1. Preprocessamento:\n")
-        
-        if 'transformers' in preproc_info:
-            transformers = preproc_info['transformers']
-            report_buffer.write(f"   - Scaling: {transformers.get('scaling', 'N/A')}\n")
-            report_buffer.write(f"   - Tratamento de valores ausentes: {transformers.get('missing_values', 'N/A')}\n")
-            report_buffer.write(f"   - Codificação de variáveis categóricas: {transformers.get('categorical_strategy', 'N/A')}\n")
-            
-            additional = transformers.get('additional_transformers', [])
-            if additional:
-                report_buffer.write(f"   - Transformadores adicionais: {', '.join(additional)}\n")
-        
-        # Feature Engineering
-        fe_info = transformations_report.get('engenharia_features', {})
-        report_buffer.write("\n2. Engenharia de Features:\n")
-        
-        if fe_info:
-            for key, value in fe_info.items():
-                if key == 'feature_selection_params' and isinstance(value, dict):
-                    report_buffer.write(f"   - {key}:\n")
-                    for param_key, param_value in value.items():
-                        report_buffer.write(f"      * {param_key}: {param_value}\n")
-                else:
-                    report_buffer.write(f"   - {key}: {value}\n")
-        
-        # Estatísticas de transformação
-        stats = transformations_report.get('estatisticas', {})
-        report_buffer.write("\n3. Estatísticas de Transformação:\n")
-        
-        if stats and stats['dimensoes_originais'] is not None:
-            report_buffer.write(f"   - Features originais: {stats['dimensoes_originais'][1]}\n")
-            report_buffer.write(f"   - Features após transformação: {stats['dimensoes_transformadas'][1]}\n")
-            
-            if stats['reducao_features_pct'] >= 0:
-                report_buffer.write(f"   - Redução de features: {stats['reducao_features_pct']}%\n")
-            else:
-                report_buffer.write(f"   - Aumento de features: {abs(stats['reducao_features_pct'])}%\n")
-            
-            if stats['ganho_performance_pct'] >= 0:
-                report_buffer.write(f"   - Ganho de performance: +{stats['ganho_performance_pct']}%\n")
-            else:
-                report_buffer.write(f"   - Perda de performance: {stats['ganho_performance_pct']}%\n")
-            
-            report_buffer.write(f"   - Decisão final: {stats['decisao_final']}\n")
-        
-        # Finalização do relatório
-        report_buffer.write("\n" + "=" * 80 + "\n")
-        report_buffer.write("CONCLUSÃO\n")
-        
-        validation_results = transformations_report.get('validacao', {})
-        if validation_results:
-            decision = validation_results.get('best_choice', '').upper()
-            diff_pct = validation_results.get('performance_diff_pct', 0)
-            
-            if decision == 'TRANSFORMED':
-                if diff_pct > 0:
-                    report_buffer.write(f"O pipeline CAFE melhorou a performance em {diff_pct:.2f}%.\n")
-                    report_buffer.write("Recomendamos utilizar o dataset transformado para seus modelos de machine learning.\n")
-                else:
-                    report_buffer.write(f"O pipeline CAFE manteve a performance ({diff_pct:.2f}%) com menos features.\n")
-                    report_buffer.write("Recomendamos utilizar o dataset transformado para melhor eficiência e generalização.\n")
-            else:
-                report_buffer.write(f"O pipeline CAFE não conseguiu melhorar a performance ({diff_pct:.2f}%).\n")
-                report_buffer.write("Recomendamos utilizar o dataset original para seus modelos de machine learning.\n")
-        else:
-            report_buffer.write("Nenhuma transformação foi aplicada ainda. Execute pipeline.fit_transform() para obter recomendações.\n")
-        
-        report_buffer.write("=" * 80 + "\n")
-        
-        report = report_buffer.getvalue()
-        
-        # Salvar o relatório em arquivo, se especificado
-        if output_file:
-            with open(output_file, 'w') as f:
-                f.write(report)
-        
-        return report
+        return summary
