@@ -428,6 +428,195 @@ pipeline = DataPipeline(
 )
 ```
 
+## Novas Funcionalidades CAFE
+
+### 1. ReportDataPipeline
+
+A classe `ReportDataPipeline` é dedicada à análise de dados e geração de relatórios textuais. Ela extrai informações relevantes sobre valores ausentes, outliers, importância de features e transformações aplicadas.
+
+### 2. ReportVisualizer
+
+A classe `ReportVisualizer` é especializada na criação de visualizações gráficas a partir dos relatórios gerados. Ela fornece representações visuais claras e informativas para facilitar a interpretação dos dados.
+
+## Funcionalidades do ReportDataPipeline
+
+### Análise de Valores Ausentes
+```python
+missing_report = reporter.get_missing_values()
+```
+Esta função analisa os valores ausentes no dataset e retorna um DataFrame com:
+- **coluna**: Nome da coluna contendo valores ausentes
+- **valores_ausentes**: Número total de valores ausentes
+- **porcentagem**: Percentual de valores ausentes
+- **recomendacao**: Recomendações personalizadas para tratamento
+
+### Análise de Outliers
+```python
+outliers_report = reporter.get_outliers()
+```
+Esta função detecta outliers em colunas numéricas e retorna um DataFrame com:
+- **coluna**: Nome da coluna contendo outliers
+- **num_outliers**: Número de outliers detectados
+- **porcentagem**: Percentual de valores considerados outliers
+- **limite_inferior/limite_superior**: Limites para detecção de outliers
+- **min/max**: Valores mínimo e máximo na coluna
+- **recomendacao**: Estratégias recomendadas para tratamento
+
+### Análise de Importância de Features
+```python
+importance_report = reporter.get_feature_importance()
+```
+Esta função avalia a importância das features para a variável alvo e retorna um DataFrame com:
+- **feature**: Nome da feature
+- **importance**: Valor numérico de importância
+- **normalized_importance**: Importância normalizada em percentual
+- **categoria**: Classificação da importância (Muito Alta, Alta, Média, Baixa, Muito Baixa)
+
+### Análise de Transformações Aplicadas
+```python
+transformations_report = reporter.get_transformations()
+```
+Esta função fornece informações detalhadas sobre transformações aplicadas pelo pipeline CAFE, retornando um dicionário com:
+- **preprocessamento**: Informações sobre transformações de preprocessamento
+- **engenharia_features**: Configurações de engenharia de features aplicadas
+- **estatisticas**: Métricas sobre redução de dimensionalidade e ganho de performance
+- **validacao**: Resultados da validação de performance comparando datasets original e transformado
+
+### Resumo Conciso
+```python
+summary = reporter.get_report_summary()
+```
+Esta função gera um resumo conciso com as principais informações e recomendações em formato de dicionário, contendo:
+- **dados**: Informações gerais sobre o dataset
+- **valores_ausentes**: Estatísticas e recomendações sobre valores ausentes
+- **outliers**: Estatísticas e recomendações sobre outliers
+- **transformacoes**: Informações e recomendações sobre as transformações aplicadas
+
+### Relatório Completo
+```python
+report = reporter.generate_report(output_file="relatorio.txt")
+```
+Esta função gera um relatório completo em formato de texto com todas as análises e recomendações, opcionalmente salvando o resultado em um arquivo.
+
+## Funcionalidades do ReportVisualizer
+
+### Visualização de Valores Ausentes
+```python
+fig = visualizer.visualize_missing_values(missing_report)
+```
+Cria um gráfico de barras horizontais mostrando as colunas com valores ausentes e suas proporções.
+
+### Visualização de Outliers
+```python
+fig = visualizer.visualize_outliers(outliers_report, df)
+```
+Cria boxplots para as colunas com maior quantidade de outliers, mostrando limites de detecção.
+
+### Visualização de Importância de Features
+```python
+fig = visualizer.visualize_feature_importance(importance_report)
+```
+Cria um gráfico de barras horizontais com código de cores para visualizar a importância relativa das features.
+
+### Visualização de Transformações
+```python
+fig = visualizer.visualize_transformations(validation_results, transformation_stats)
+```
+Cria um painel com 4 gráficos mostrando:
+1. Comparação de performance antes/depois das transformações
+2. Comparação do número de features antes/depois
+3. Performance por fold de validação cruzada
+4. Resumo textual dos resultados da transformação
+
+### Visualização de Distribuição de Dados
+```python
+fig = visualizer.visualize_data_distribution(df, columns=features_list)
+```
+Cria histogramas com curvas KDE para visualizar a distribuição das features selecionadas.
+
+### Visualização de Matriz de Correlação
+```python
+fig = visualizer.visualize_correlation_matrix(df, target_col='target')
+```
+Cria um heatmap de correlações entre features e um gráfico adicional com correlações em relação à variável alvo.
+
+## Exemplo de Uso Integrado
+
+```python
+# Importações
+from cafe.data_pipeline import DataPipeline
+from cafe.report_datapipeline import ReportDataPipeline
+from cafe.report_visualizer import ReportVisualizer
+
+# Criar e aplicar pipeline CAFE
+pipeline = DataPipeline(...)
+transformed_df = pipeline.fit_transform(df, target_col='target')
+
+# Criar instâncias para relatórios e visualizações
+reporter = ReportDataPipeline(
+    df=df,
+    target_col='target',
+    preprocessor=pipeline.preprocessor,
+    feature_engineer=pipeline.feature_engineer,
+    validator=pipeline.validator
+)
+visualizer = ReportVisualizer()
+
+# Gerar relatório de valores ausentes
+missing_report = reporter.get_missing_values()
+
+# Visualizar valores ausentes
+fig_missing = visualizer.visualize_missing_values(missing_report)
+fig_missing.savefig("missing_values.png")
+
+# Gerar relatório completo
+report = reporter.generate_report(output_file="cafe_report.txt")
+```
+
+## Uso Independente
+
+As classes podem ser usadas de forma independente:
+
+### Apenas para Análise de Dados (sem pipeline CAFE)
+```python
+# Criar apenas o reporter
+reporter = ReportDataPipeline(df=seu_dataframe, target_col='coluna_alvo')
+
+# Gerar relatórios
+missing_report = reporter.get_missing_values()
+outliers_report = reporter.get_outliers()
+importance_report = reporter.get_feature_importance()
+
+# Criar relatório completo
+report = reporter.generate_report(output_file="relatorio.txt")
+```
+
+### Apenas para Visualizações
+```python
+# Criar visualizador
+visualizer = ReportVisualizer()
+
+# Criar visualizações de distribuição
+fig = visualizer.visualize_data_distribution(seu_dataframe)
+fig.savefig("distribuicoes.png")
+
+# Criar visualizações de correlação
+fig_corr = visualizer.visualize_correlation_matrix(seu_dataframe)
+fig_corr.savefig("correlacoes.png")
+```
+
+## Benefícios
+
+1. **Compreensão aprofundada dos dados**: Obtenha insights detalhados sobre valores ausentes, outliers e características dos dados.
+
+2. **Avaliação de transformações**: Avalie objetivamente o impacto das transformações aplicadas pelo CAFE na dimensionalidade e performance.
+
+3. **Relatórios automatizados**: Gere relatórios detalhados com recomendações específicas para tratamento de dados.
+
+4. **Visualizações informativas**: Transforme análises complexas em visualizações claras para facilitar a interpretação.
+
+5. **Fluxo de trabalho documentado**: Mantenha um registro completo das análises e decisões tomadas durante o processamento de dados.
+
 ## Perguntas Frequentes
 
 ### Quando devo usar o CAFE?

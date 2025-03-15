@@ -5,6 +5,41 @@ Todas as mudanças notáveis neste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/spec/v2.0.0.html).
 
+## [0.4.0] - 2025-03-115
+
+### Adicionado
+- Classes para relatórios avançados e visualizações interativas:
+  - `ReportDataPipeline`: Nova classe dedicada à geração de relatórios detalhados sobre dados e transformações
+  - `ReportVisualizer`: Nova classe especializada em visualizações gráficas para análise de dados
+
+### Relatórios Avançados (`ReportDataPipeline`)
+- Método `get_missing_values()` para análise detalhada de valores ausentes com recomendações personalizadas
+- Método `get_outliers()` para identificação e análise estatística de outliers
+- Método `get_feature_importance()` para avaliação da importância de features com categorização
+- Método `get_transformations()` para análise detalhada das transformações aplicadas pelo pipeline
+- Método `get_report_summary()` para resumo conciso das principais métricas e recomendações
+- Método `generate_report()` para criação de relatórios completos em formato texto
+
+### Visualizações Interativas (`ReportVisualizer`)
+- Método `visualize_missing_values()` para gráficos de barras de valores ausentes
+- Método `visualize_outliers()` para boxplots com identificação de limites e valores atípicos
+- Método `visualize_feature_importance()` para gráficos de barras com código de cores por categoria de importância
+- Método `visualize_transformations()` para painéis comparativos de performance e dimensionalidade
+- Método `visualize_data_distribution()` para histogramas com KDE para análise de distribuição
+- Método `visualize_correlation_matrix()` para heatmaps de correlação e gráficos de correlação com o target
+
+### Melhorado
+- Separação clara de responsabilidades entre geração de relatórios e visualização
+- Flexibilidade para uso independente de componentes (só relatórios ou só visualizações)
+- Geração automática de recomendações baseadas em análise estatística
+- Compatibilidade com diferentes tipos de dados e cenários de transformação
+- Integração transparente com componentes existentes do sistema CAFE
+
+### Atualizado
+- Scripts de exemplo atualizados para demonstrar o uso das novas funcionalidades
+- Fluxo de trabalho mais transparente e documentado no processo de engenharia de features
+
+
 ## [0.3.0] - 2025-03-15
 
 ### Adicionado

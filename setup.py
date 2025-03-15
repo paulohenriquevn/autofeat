@@ -14,7 +14,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="cafe-autofe",
-    version="0.1.1",
+    version="0.1.3",
     author="CAFE Team",
     author_email="your.email@example.com",
     description="Component Automated Feature Engineer - Sistema de Engenharia Automática de Features",

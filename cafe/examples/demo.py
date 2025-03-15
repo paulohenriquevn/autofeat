@@ -539,6 +539,10 @@ def run_demo(dataset_name, show_plots=True):
     
     # 5. Obter e mostrar resultados da validação
     validation_results = pipeline.get_validation_results()
+    importance = pipeline.get_feature_importance(df, target_col='target')
+    
+    print(f"get_validation_results: {validation_results}")
+    print(f"get_feature_importance: {importance}")
     
     if validation_results:
         # Adicionar o número original de features

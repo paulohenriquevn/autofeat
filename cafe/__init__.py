@@ -12,7 +12,8 @@ from .feature_engineer import FeatureEngineer, create_feature_engineer
 from .performance_validator import PerformanceValidator
 from .data_pipeline import DataPipeline, create_data_pipeline
 from .explorer import Explorer, TransformationTree, HeuristicSearch
-from .enhanced_datapipeline import EnhancedDataPipeline
+from .report_datapipeline import ReportDataPipeline
+from .report_visualizer import ReportVisualizer
 
 __all__ = [
     "PreProcessor",
@@ -25,5 +26,6 @@ __all__ = [
     "Explorer",
     "TransformationTree",
     "HeuristicSearch",
-    "EnhancedDataPipeline"
+    "ReportDataPipeline",
+    "ReportVisualizer"
 ]
