@@ -5,7 +5,7 @@ Todas as mudanças notáveis neste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/),
 e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR/spec/v2.0.0.html).
 
-## [0.4.0] - 2025-03-115
+## [0.1.3] - 2025-03-115
 
 ### Adicionado
 - Classes para relatórios avançados e visualizações interativas:
@@ -40,7 +40,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - Fluxo de trabalho mais transparente e documentado no processo de engenharia de features
 
 
-## [0.3.0] - 2025-03-15
+## [0.1.1] - 2025-03-15
 
 ### Adicionado
 - Transformadores avançados no módulo `PreProcessor`:
@@ -83,7 +83,7 @@ e este projeto adere ao [Versionamento Semântico](https://semver.org/lang/pt-BR
 - Manipulação adequada de tipos de dados mistos (numéricos, categóricos, datetime)
 - Resolução de conflitos em transformações combinadas
 
-## [0.2.0] - 2025-03-11
+## [0.1.2] - 2025-03-11
 
 ### Adicionado
 - Implementação de métodos avançados de seleção de features no componente `FeatureEngineer`
